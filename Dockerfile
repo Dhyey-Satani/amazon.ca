@@ -7,8 +7,8 @@ WORKDIR /frontend
 # Copy frontend package files
 COPY job-monitor-frontend/package*.json ./
 
-# Install frontend dependencies
-RUN npm ci --only=production
+# Install frontend dependencies (including dev dependencies for build)
+RUN npm install
 
 # Copy frontend source code
 COPY job-monitor-frontend/ .
