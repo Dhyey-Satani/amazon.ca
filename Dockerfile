@@ -69,7 +69,8 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') && \
 COPY --from=frontend-builder /frontend/dist /var/www/html
 
 # Create nginx configuration for serving frontend and proxying API
-RUN echo 'server {
+RUN cat > /etc/nginx/sites-available/default << 'EOF'
+server {
     listen 8080;
     server_name localhost;
     root /var/www/html;
@@ -124,10 +125,12 @@ RUN echo 'server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-}' > /etc/nginx/sites-available/default
+}
+EOF
 
 # Create supervisor configuration to run both nginx and python API
-RUN echo '[supervisord]
+RUN cat > /etc/supervisor/conf.d/supervisord.conf << 'EOF'
+[supervisord]
 nodaemon=true
 user=root
 
@@ -144,7 +147,8 @@ autorestart=true
 user=botuser
 stdout_logfile=/app/logs/api.log
 stderr_logfile=/app/logs/api.log
-environment=PORT=8081' > /etc/supervisor/conf.d/supervisord.conf
+environment=PORT=8081
+EOF
 
 # Create app directory
 WORKDIR /app
