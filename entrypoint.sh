@@ -3,11 +3,12 @@ set -e
 
 # Get the PORT from environment variable or default to 8080
 export PORT=${PORT:-8080}
-export API_PORT=$((PORT + 1))
+# For Railway: nginx listens on PORT, API runs on internal port 8081
+export API_PORT=8081
 
 echo "=== Railway Startup Debug ==="
-echo "Environment PORT: $PORT"
-echo "Calculated API_PORT: $API_PORT"
+echo "Environment PORT (nginx): $PORT"
+echo "Internal API_PORT: $API_PORT"
 echo "Current working directory: $(pwd)"
 echo "Files in /etc/nginx/sites-available/:"
 ls -la /etc/nginx/sites-available/ || true
@@ -21,7 +22,7 @@ echo "Configuring nginx for PORT: $PORT"
 envsubst '${PORT}' < /etc/nginx/sites-available/default > /tmp/nginx.conf
 
 # Substitute API_PORT placeholder
-echo "Setting API proxy to port: $API_PORT"
+echo "Setting API proxy to localhost:$API_PORT"
 sed "s/API_PORT_PLACEHOLDER/${API_PORT}/g" /tmp/nginx.conf > /etc/nginx/sites-available/default
 
 echo "Final nginx config:"

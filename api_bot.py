@@ -859,9 +859,11 @@ if __name__ == "__main__":
         asyncio.create_task(job_monitor.start_monitoring())
     
     # Run the API server
+    # Railway sets PORT env var, but API runs internally on 8081
+    # Supervisor passes PORT=8081 to this process
     uvicorn.run(
         "api_bot:app", 
-        host="0.0.0.0", 
-        port=int(os.getenv('PORT', os.getenv('API_PORT', '8000'))),
+        host="0.0.0.0",  # Railway requires binding to 0.0.0.0
+        port=int(os.getenv('PORT', '8081')),
         reload=False
     )
