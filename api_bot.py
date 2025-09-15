@@ -70,8 +70,9 @@ class JobPosting:
 class JobScraper:
     """Handles job scraping from target websites."""
     
-    def __init__(self, use_selenium: bool = True):
-        self.use_selenium = use_selenium
+    def __init__(self, use_selenium: bool = False):
+        # Disable Selenium by default for serverless environments
+        self.use_selenium = use_selenium and os.getenv('VERCEL', '') == ''
         self.logger = logging.getLogger('scraper')
         self.driver = None
         
@@ -554,7 +555,9 @@ class JobMonitor:
     """Main job monitoring class that manages scraping and job storage."""
     
     def __init__(self):
-        self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'false').lower() == 'true')
+        # For serverless environments, don't use Selenium
+        is_serverless = os.getenv('VERCEL', '') != '' or os.getenv('AWS_LAMBDA_FUNCTION_NAME', '') != ''
+        self.scraper = JobScraper(use_selenium=not is_serverless)
         self.jobs: Dict[str, JobPosting] = {}
         self.logs = deque(maxlen=100)  # Keep last 100 log messages
         self.is_running = False
@@ -574,8 +577,9 @@ class JobMonitor:
         
         self.logger = logging.getLogger('monitor')
         
-        # Load existing jobs from file
-        self._load_jobs()
+        # Only load jobs from file in non-serverless environments
+        if not is_serverless:
+            self._load_jobs()
         
         # Setup logging handler to capture logs
         self._setup_log_handler()
@@ -614,7 +618,11 @@ class JobMonitor:
             self.logger.error(f"Failed to load jobs: {e}")
     
     def _save_jobs(self):
-        """Save jobs to JSON file."""
+        """Save jobs to JSON file (only in non-serverless environments)."""
+        # Skip saving in serverless environments
+        if os.getenv('VERCEL', '') != '' or os.getenv('AWS_LAMBDA_FUNCTION_NAME', '') != '':
+            return
+            
         try:
             with open('jobs.json', 'w') as f:
                 jobs_data = [asdict(job) for job in self.jobs.values()]
