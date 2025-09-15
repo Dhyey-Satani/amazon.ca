@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Backend API Service
   amazon-job-bot:
     build: .
     container_name: amazon-job-bot
@@ -19,8 +20,12 @@ services:
     
     # Persistent volumes
     volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
+      - bot_data:/app/data
+      - bot_logs:/app/logs
+    
+    # Expose port for internal communication
+    expose:
+      - "8080"
     
     # Security options
     security_opt:
@@ -50,6 +55,57 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    
+    # Network
+    networks:
+      - job-monitor-network
+
+  # Frontend Service
+  job-monitor-frontend:
+    build: ./job-monitor-frontend
+    container_name: job-monitor-frontend
+    restart: unless-stopped
+    
+    # Expose port 80 to host port 3000
+    ports:
+      - "3000:80"
+    
+    # Depends on backend
+    depends_on:
+      - amazon-job-bot
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 128M
+        reservations:
+          cpus: '0.05'
+          memory: 32M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    
+    # Network
+    networks:
+      - job-monitor-network
 
 # Create named volumes for data persistence
 volumes:
@@ -57,3 +113,8 @@ volumes:
     driver: local
   bot_logs:
     driver: local
+
+# Create custom network for service communication
+networks:
+  job-monitor-network:
+    driver: bridge
