@@ -97,10 +97,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY bot.py .
 COPY api_bot.py .
 COPY test_bot.py .
+COPY health_check.py .
 COPY .env.example .
 
 # Create necessary directories and set permissions
-RUN mkdir -p logs data /var/log/nginx && \
+RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
     chown -R botuser:botuser /app && \
     chmod 755 /var/www/html
 

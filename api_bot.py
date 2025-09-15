@@ -111,21 +111,20 @@ class JobScraper:
             # Try to create the driver
             try:
                 self.driver = webdriver.Chrome(options=chrome_options)
+                self.logger.info("Chrome WebDriver initialized successfully")
             except Exception as driver_error:
                 self.logger.warning(f"Could not initialize Chrome driver: {driver_error}")
-                self.logger.info("Trying with ChromeDriverManager (auto-download)...")
-                from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                # Don't fail completely - continue without Selenium
+                self.use_selenium = False
+                self.logger.info("Continuing without Selenium - using requests only")
+                return
             
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-            self.logger.info("Selenium WebDriver initialized successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to setup Selenium: {e}")
             self.logger.warning("Selenium not available. Will use requests+BeautifulSoup only.")
-            raise
+            self.use_selenium = False
     
     def scrape_jobs(self, url: str) -> List[JobPosting]:
         """Scrape jobs from the given URL."""
@@ -853,17 +852,41 @@ async def clear_jobs():
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    # Auto-start monitoring if configured
-    if os.getenv('AUTO_START_MONITORING', 'false').lower() == 'true':
-        import asyncio
-        asyncio.create_task(job_monitor.start_monitoring())
+    # Startup debugging
+    import sys
+    print(f"=== API Startup Debug ===")
+    print(f"Python version: {sys.version}")
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"PORT environment variable: {os.getenv('PORT', 'Not set')}")
+    print(f"USE_SELENIUM: {os.getenv('USE_SELENIUM', 'Not set')}")
+    print(f"============================")
     
-    # Run the API server
-    # Railway sets PORT env var, but API runs internally on 8081
-    # Supervisor passes PORT=8081 to this process
-    uvicorn.run(
-        "api_bot:app", 
-        host="0.0.0.0",  # Railway requires binding to 0.0.0.0
-        port=int(os.getenv('PORT', '8081')),
-        reload=False
-    )
+    try:
+        # Initialize job monitor
+        print("Initializing job monitor...")
+        # job_monitor should already be initialized globally
+        
+        # Auto-start monitoring if configured
+        if os.getenv('AUTO_START_MONITORING', 'false').lower() == 'true':
+            print("Auto-starting job monitoring...")
+            import asyncio
+            asyncio.create_task(job_monitor.start_monitoring())
+        
+        # Run the API server
+        # Railway sets PORT env var, but API runs internally on 8081
+        # Supervisor passes PORT=8081 to this process
+        port = int(os.getenv('PORT', '8081'))
+        print(f"Starting API server on 0.0.0.0:{port}")
+        
+        uvicorn.run(
+            "api_bot:app", 
+            host="0.0.0.0",  # Railway requires binding to 0.0.0.0
+            port=port,
+            reload=False,
+            log_level="info"
+        )
+    except Exception as e:
+        print(f"CRITICAL ERROR: Failed to start API server: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)

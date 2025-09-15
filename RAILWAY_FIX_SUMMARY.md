@@ -67,7 +67,7 @@ Railway Edge Proxy → Port $PORT → Nginx
 1. **Commit all changes:**
    ```bash
    git add .
-   git commit -m "Fix Railway 502 Bad Gateway - bind to 0.0.0.0 and fix port config"
+   git commit -m "Fix Railway 502 Bad Gateway - enhanced debugging and startup handling"
    ```
 
 2. **Push to Railway:**
@@ -78,7 +78,14 @@ Railway Edge Proxy → Port $PORT → Nginx
 3. **Railway will automatically:**
    - Detect the changes
    - Rebuild the container
-   - Deploy with correct configuration
+   - Deploy with enhanced debugging
+   - Show detailed startup logs
+
+4. **Monitor Railway logs for:**
+   - "=== Railway Startup Debug ===" - Environment info
+   - "=== Python Environment Check ===" - Dependency verification  
+   - "Testing API startup..." - API import test
+   - "Starting API server on 0.0.0.0:XXXX" - Server startup confirmation
 
 ## 🔍 **Testing Verification**
 

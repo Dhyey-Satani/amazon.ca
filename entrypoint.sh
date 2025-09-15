@@ -39,6 +39,32 @@ cat /etc/supervisor/conf.d/supervisord.conf
 echo "Testing nginx configuration..."
 nginx -t
 
+# Add debugging: Check Python and dependencies
+echo "=== Python Environment Check ==="
+echo "Python version:"
+python --version
+echo "Python executable:"
+which python
+echo "Pip packages:"
+pip list | grep -E "(fastapi|uvicorn|requests)"
+echo "API script exists:"
+ls -la /app/api_bot.py
+echo "API script permissions:"
+stat /app/api_bot.py
+echo "App directory permissions:"
+ls -la /app/
+echo "=============================="
+
+# Test API startup manually first
+echo "Testing API startup..."
+cd /app
+echo "Testing Python API import..."
+python -c "import api_bot; print('API import successful')" || {
+    echo "❌ API import failed!"
+    python -c "import sys; print('Python path:', sys.path)"
+    exit 1
+}
+
 echo "Starting services..."
 # Start supervisor (which starts both nginx and the API)
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
