@@ -68,87 +68,11 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') && \
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /frontend/dist /var/www/html
 
-# Create nginx configuration for serving frontend and proxying API
-RUN cat > /etc/nginx/sites-available/default << 'EOF'
-server {
-    listen 8080;
-    server_name localhost;
-    root /var/www/html;
-    index index.html;
+# Copy nginx configuration
+COPY nginx-default.conf /etc/nginx/sites-available/default
 
-    # Enable gzip compression
-    gzip on;
-    gzip_vary on;
-    gzip_min_length 10240;
-    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/javascript application/json;
-
-    # Handle React Router
-    location / {
-        try_files $uri $uri/ /index.html;
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        add_header Pragma "no-cache";
-        add_header Expires "0";
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Proxy API requests to backend
-    location /api/ {
-        proxy_pass http://127.0.0.1:8081/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # Enable CORS
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization";
-        
-        # Handle preflight requests
-        if ($request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin *;
-            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
-            add_header Access-Control-Allow-Headers "Content-Type, Authorization";
-            add_header Content-Length 0;
-            add_header Content-Type text/plain;
-            return 200;
-        }
-    }
-
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-}
-EOF
-
-# Create supervisor configuration to run both nginx and python API
-RUN cat > /etc/supervisor/conf.d/supervisord.conf << 'EOF'
-[supervisord]
-nodaemon=true
-user=root
-
-[program:nginx]
-command=nginx -g "daemon off;"
-autorestart=true
-stdout_logfile=/var/log/nginx/access.log
-stderr_logfile=/var/log/nginx/error.log
-
-[program:api]
-command=python /app/api_bot.py
-directory=/app
-autorestart=true
-user=botuser
-stdout_logfile=/app/logs/api.log
-stderr_logfile=/app/logs/api.log
-environment=PORT=8081
-EOF
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Create app directory
 WORKDIR /app

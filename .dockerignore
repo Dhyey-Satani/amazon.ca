@@ -28,3 +28,6 @@ coverage.xml
 *.swp
 *.swo
 *~
+# Keep nginx and supervisor config files
+!nginx-default.conf
+!supervisord.conf
