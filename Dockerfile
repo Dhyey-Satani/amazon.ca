@@ -1,4 +1,22 @@
-# Use Python 3.11 slim image as base
+# Multi-stage build: First stage for frontend build
+FROM node:18-alpine as frontend-builder
+
+# Set working directory for frontend
+WORKDIR /frontend
+
+# Copy frontend package files
+COPY job-monitor-frontend/package*.json ./
+
+# Install frontend dependencies
+RUN npm ci --only=production
+
+# Copy frontend source code
+COPY job-monitor-frontend/ .
+
+# Build frontend for production
+RUN npm run build
+
+# Second stage: Python backend with integrated frontend
 FROM python:3.11-slim
 
 # Set environment variables
@@ -6,7 +24,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies
+# Install system dependencies including nginx
 RUN apt-get update && apt-get install -y \
     # Chrome dependencies
     wget \
@@ -17,6 +35,9 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     # Additional utilities
     cron \
+    # Nginx for serving frontend
+    nginx \
+    supervisor \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -44,6 +65,87 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') && \
     rm -rf /tmp/chromedriver* && \
     chromedriver --version
 
+# Copy built frontend from frontend-builder stage
+COPY --from=frontend-builder /frontend/dist /var/www/html
+
+# Create nginx configuration for serving frontend and proxying API
+RUN echo 'server {
+    listen 8080;
+    server_name localhost;
+    root /var/www/html;
+    index index.html;
+
+    # Enable gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 10240;
+    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/xml+rss application/javascript application/json;
+
+    # Handle React Router
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+        add_header Pragma "no-cache";
+        add_header Expires "0";
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Proxy API requests to backend
+    location /api/ {
+        proxy_pass http://127.0.0.1:8081/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # Enable CORS
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+        
+        # Handle preflight requests
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin *;
+            add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+            add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 200;
+        }
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+}' > /etc/nginx/sites-available/default
+
+# Create supervisor configuration to run both nginx and python API
+RUN echo '[supervisord]
+nodaemon=true
+user=root
+
+[program:nginx]
+command=nginx -g "daemon off;"
+autorestart=true
+stdout_logfile=/var/log/nginx/access.log
+stderr_logfile=/var/log/nginx/error.log
+
+[program:api]
+command=python /app/api_bot.py
+directory=/app
+autorestart=true
+user=botuser
+stdout_logfile=/app/logs/api.log
+stderr_logfile=/app/logs/api.log
+environment=PORT=8081' > /etc/supervisor/conf.d/supervisord.conf
+
 # Create app directory
 WORKDIR /app
 
@@ -63,25 +165,27 @@ COPY api_bot.py .
 COPY test_bot.py .
 COPY .env.example .
 
-# Create necessary directories
-RUN mkdir -p logs data && \
-    chown -R botuser:botuser /app
+# Create necessary directories and set permissions
+RUN mkdir -p logs data /var/log/nginx && \
+    chown -R botuser:botuser /app && \
+    chmod 755 /var/www/html
 
-# Switch to non-root user
-USER botuser
+# Switch to root user for supervisor (will run individual services as appropriate users)
+USER root
 
-# Health check
+# Health check for the web server
 HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
-    CMD python -c "import os; exit(0 if os.path.exists('jobs.db') else 1)"
+    CMD curl -f http://localhost:8080/ || exit 1
 
 # Default environment variables
 ENV USE_SELENIUM=true \
     POLL_INTERVAL=10 \
     LOG_LEVEL=INFO \
-    DATABASE_PATH=/app/data/jobs.db
+    DATABASE_PATH=/app/data/jobs.db \
+    PORT=8081
 
-# Expose port for API
+# Expose port 8080 for the combined frontend/backend service
 EXPOSE 8080
 
-# Run the API server (Railway will handle the persistent data via volumes)
-CMD ["python", "api_bot.py"]
+# Run supervisor to manage both nginx and the API server
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

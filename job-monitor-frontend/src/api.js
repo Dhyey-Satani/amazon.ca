@@ -1,6 +1,6 @@
 // API configuration
 // Use relative path in production (proxied through nginx) or localhost in development
-const API_BASE_URL = process.env.NODE_ENV === 'production' ? '/api' : 'http://localhost:8080';
+const API_BASE_URL = process.env.NODE_ENV === 'production' || window.location.hostname !== 'localhost' ? '/api' : 'http://localhost:8080';
 
 
 // https://www.youtube.com/watch?v=RIMTaJwqjTM
