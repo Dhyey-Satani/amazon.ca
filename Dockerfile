@@ -49,6 +49,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 # Copy application code
 COPY bot.py .
+COPY api_bot.py .
+COPY test_bot.py .
 COPY .env.example .
 
 # Create necessary directories
@@ -68,11 +70,8 @@ ENV USE_SELENIUM=true \
     LOG_LEVEL=INFO \
     DATABASE_PATH=/app/data/jobs.db
 
-# Volume for persistent data
-VOLUME ["/app/data", "/app/logs"]
-
-# Expose port for potential web interface (future enhancement)
+# Expose port for API
 EXPOSE 8080
 
-# Run the bot
-CMD ["python", "bot.py"]
+# Run the API server (Railway will handle the persistent data via volumes)
+CMD ["python", "api_bot.py"]
