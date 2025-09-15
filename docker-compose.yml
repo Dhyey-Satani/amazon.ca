@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  amazon-job-bot:
+    build: .
+    container_name: amazon-job-bot
+    restart: unless-stopped
+    
+    # Environment variables (override in .env file)
+    environment:
+      - USE_SELENIUM=true
+      - POLL_INTERVAL=10
+      - LOG_LEVEL=INFO
+      - DATABASE_PATH=/app/data/jobs.db
+    
+    # Load environment variables from .env file
+    env_file:
+      - .env
+    
+    # Persistent volumes
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/data/jobs.db') else 1)"]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 30s
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Create named volumes for data persistence
+volumes:
+  bot_data:
+    driver: local
+  bot_logs:
+    driver: local
