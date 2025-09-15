@@ -99,6 +99,7 @@ COPY api_bot.py .
 COPY test_bot.py .
 COPY health_check.py .
 COPY test_api_startup.py .
+COPY diagnose_502.py .
 COPY .env.example .
 
 # Create necessary directories and set permissions
@@ -107,6 +108,7 @@ RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
     chmod 755 /var/www/html && \
     chmod +x /app/api_bot.py && \
     chmod +x /app/health_check.py && \
+    chmod +x /app/diagnose_502.py && \
     # Ensure logs directory is writable by botuser
     chown -R botuser:botuser /app/logs && \
     chmod -R 755 /app/logs

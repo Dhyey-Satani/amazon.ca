@@ -32,7 +32,11 @@ cat /etc/nginx/sites-available/default
 
 # Update supervisor config with correct API port
 echo "Updating supervisor config for API_PORT: $API_PORT"
+# Replace PORT=8081 with the actual API_PORT value
 sed -i "s/PORT=8081/PORT=${API_PORT}/g" /etc/supervisor/conf.d/supervisord.conf
+
+# Also ensure the API process gets the correct port via environment
+echo "Verifying supervisor will set PORT=${API_PORT} for API process"
 
 echo "Final supervisor config:"
 cat /etc/supervisor/conf.d/supervisord.conf
@@ -85,5 +89,32 @@ su - botuser -c "cd /app && python test_api_startup.py" || {
 }
 
 echo "Starting services..."
-# Start supervisor (which starts both nginx and the API)
-exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+echo "Final verification before supervisor startup:"
+echo "External PORT (nginx): $PORT"
+echo "Internal API_PORT: $API_PORT"
+echo "Nginx will proxy /api/* to: http://127.0.0.1:$API_PORT/"
+echo "API will bind to: 0.0.0.0:$API_PORT"
+echo "Health check: We should be able to curl nginx->API chain"
+
+# Start supervisor in the background to allow health checking
+echo "Starting supervisor..."
+/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+SUPERVISOR_PID=$!
+
+# Wait for services to start
+echo "Waiting for services to start..."
+sleep 10
+
+# Run 502 diagnostic
+echo "Running 502 diagnostic..."
+python /app/diagnose_502.py || {
+    echo "🆘 CRITICAL: 502 diagnostic failed!"
+    echo "Checking supervisor logs..."
+    supervisorctl status || true
+    echo "This will likely result in 502 errors on Railway"
+    # Don't exit - let Railway see the logs
+}
+
+# Keep supervisor running in foreground
+echo "Services started - monitoring..."
+wait $SUPERVISOR_PID
