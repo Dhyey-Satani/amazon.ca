@@ -1,4 +1,8 @@
-# Amazon Job Monitor - Vercel Deployment
+# Amazon Job Monitor - Vercel Deployment (FIXED)
+
+## ✅ **Status: Issues Resolved**
+
+The `FileNotFoundError: main.py` and serverless function crashes have been fixed!
 
 ## Quick Deployment Steps
 
@@ -17,8 +21,40 @@ vercel login
 # Make sure you're in the project root directory
 cd path/to/amazon.ca
 
+# Test locally first (optional)
+python test_simple_api.py
+
 # Deploy to Vercel
 vercel --prod
+```
+
+## 🔧 **What Was Fixed**
+
+1. **Created missing main.py**: Entry point that Vercel was looking for
+2. **Added simplified API**: [api_simple.py](api_simple.py) - more reliable for serverless
+3. **Fixed import issues**: Robust error handling and fallback imports
+4. **Optimized dependencies**: Minimal requirements for faster cold starts
+5. **Removed problematic features**: No Selenium, no file operations, no threading
+
+## 📁 **Files for Vercel Deployment**
+
+- **main.py**: Entry point with error handling
+- **api_simple.py**: Simplified, serverless-friendly API
+- **vercel.json**: Vercel configuration
+- **requirements-vercel.txt**: Minimal dependencies
+- **.vercelignore**: Exclude unnecessary files
+- **test_simple_api.py**: Local testing script
+
+## 🧪 **Testing Before Deployment**
+
+```bash
+# Test the simplified API locally
+python test_simple_api.py
+
+# Should show:
+# ✅ Successfully imported api_simple
+# ✅ All endpoints found
+# ✅ All tests passed! Ready for Vercel deployment
 ```
 
 ### 4. Environment Variables (Optional)

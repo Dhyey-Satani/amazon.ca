@@ -4,7 +4,17 @@ echo  Amazon Job Monitor - Vercel Deploy
 echo ================================
 echo.
 
-echo Checking if Vercel CLI is installed...
+echo Step 1: Testing the simplified API...
+python test_simple_api.py
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo ERROR: API test failed! Please fix the issues before deploying.
+    pause
+    exit /b 1
+)
+
+echo.
+echo Step 2: Checking if Vercel CLI is installed...
 where vercel >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo ERROR: Vercel CLI not found!
@@ -20,13 +30,14 @@ echo Current directory: %CD%
 echo.
 
 echo Files prepared for Vercel:
-echo - main.py (entry point)
+echo - main.py (entry point with error handling)
+echo - api_simple.py (simplified serverless API)
 echo - vercel.json (configuration)
-echo - requirements-vercel.txt (dependencies)
+echo - requirements-vercel.txt (minimal dependencies)
 echo - .vercelignore (exclusions)
 echo.
 
-echo Starting Vercel deployment...
+echo Step 3: Starting Vercel deployment...
 echo.
 
 REM Deploy to Vercel
@@ -37,6 +48,12 @@ echo ================================
 echo Deployment complete!
 echo.
 echo Your API will be available at the URL shown above.
-echo Don't forget to deploy the frontend separately from the job-monitor-frontend folder.
+echo.
+echo Test your deployed API:
+echo - GET /health - Health check
+echo - GET /jobs - Get jobs (triggers scraping)
+echo - GET /status - API status
+echo.
+echo Don't forget to deploy the frontend separately!
 echo ================================
 pause
