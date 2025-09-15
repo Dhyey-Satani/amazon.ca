@@ -106,7 +106,10 @@ RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
     chown -R botuser:botuser /app && \
     chmod 755 /var/www/html && \
     chmod +x /app/api_bot.py && \
-    chmod +x /app/health_check.py
+    chmod +x /app/health_check.py && \
+    # Ensure logs directory is writable by botuser
+    chown -R botuser:botuser /app/logs && \
+    chmod -R 755 /app/logs
 
 # Switch to root user for supervisor (will run individual services as appropriate users)
 USER root

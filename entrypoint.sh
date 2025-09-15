@@ -14,8 +14,10 @@ echo "Files in /etc/nginx/sites-available/:"
 ls -la /etc/nginx/sites-available/ || true
 echo "=============================="
 
-# Create logs directory
+# Create logs directory with proper permissions
 mkdir -p /app/logs
+chown -R botuser:botuser /app/logs
+chmod -R 755 /app/logs
 
 # Substitute PORT in nginx config
 echo "Configuring nginx for PORT: $PORT"
@@ -68,10 +70,15 @@ echo "✅ API startup test passed - proceeding with supervisor startup"
 
 # Test running as botuser (same as supervisor will do)
 echo "Testing API as botuser (same as supervisor)..."
+# Ensure botuser has full access to app directory and logs
+chown -R botuser:botuser /app
+chmod -R 755 /app
 su - botuser -c "cd /app && python test_api_startup.py" || {
     echo "❌ API test failed when running as botuser!"
     echo "Checking permissions..."
     ls -la /app/
+    echo "Checking logs directory..."
+    ls -la /app/logs/ || echo "logs directory not found"
     echo "Checking botuser environment..."
     su - botuser -c "whoami && pwd && python --version"
     exit 1
