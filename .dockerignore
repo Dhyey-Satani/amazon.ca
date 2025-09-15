@@ -28,6 +28,7 @@ coverage.xml
 *.swp
 *.swo
 *~
-# Keep nginx and supervisor config files
+# Keep nginx, supervisor config files and entrypoint
 !nginx-default.conf
 !supervisord.conf
+!entrypoint.sh

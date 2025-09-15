@@ -38,6 +38,8 @@ RUN apt-get update && apt-get install -y \
     # Nginx for serving frontend
     nginx \
     supervisor \
+    # For environment variable substitution
+    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -74,6 +76,10 @@ COPY nginx-default.conf /etc/nginx/sites-available/default
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create app directory
 WORKDIR /app
 
@@ -103,7 +109,7 @@ USER root
 
 # Health check for the web server
 HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/ || exit 1
 
 # Default environment variables
 ENV USE_SELENIUM=true \
@@ -112,8 +118,8 @@ ENV USE_SELENIUM=true \
     DATABASE_PATH=/app/data/jobs.db \
     PORT=8081
 
-# Expose port 8080 for the combined frontend/backend service
+# Expose port 8080 by default (Railway will override with PORT env var)
 EXPOSE 8080
 
-# Run supervisor to manage both nginx and the API server
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+# Run the entrypoint script which configures and starts services
+CMD ["/entrypoint.sh"]
