@@ -59,9 +59,21 @@ echo "=============================="
 echo "Testing API startup..."
 cd /app
 echo "Testing Python API import..."
-python -c "import api_bot; print('API import successful')" || {
-    echo "❌ API import failed!"
-    python -c "import sys; print('Python path:', sys.path)"
+python test_api_startup.py || {
+    echo "❌ API startup test failed!"
+    exit 1
+}
+
+echo "✅ API startup test passed - proceeding with supervisor startup"
+
+# Test running as botuser (same as supervisor will do)
+echo "Testing API as botuser (same as supervisor)..."
+su - botuser -c "cd /app && python test_api_startup.py" || {
+    echo "❌ API test failed when running as botuser!"
+    echo "Checking permissions..."
+    ls -la /app/
+    echo "Checking botuser environment..."
+    su - botuser -c "whoami && pwd && python --version"
     exit 1
 }
 

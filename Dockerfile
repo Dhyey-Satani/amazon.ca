@@ -84,7 +84,7 @@ RUN chmod +x /entrypoint.sh
 WORKDIR /app
 
 # Create non-root user for security
-RUN groupadd -r botuser && useradd -r -g botuser -s /bin/bash botuser
+RUN groupadd -r botuser && useradd -r -g botuser -s /bin/bash -d /app botuser
 
 # Copy requirements first for better layer caching
 COPY requirements.txt .
@@ -98,12 +98,15 @@ COPY bot.py .
 COPY api_bot.py .
 COPY test_bot.py .
 COPY health_check.py .
+COPY test_api_startup.py .
 COPY .env.example .
 
 # Create necessary directories and set permissions
 RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
     chown -R botuser:botuser /app && \
-    chmod 755 /var/www/html
+    chmod 755 /var/www/html && \
+    chmod +x /app/api_bot.py && \
+    chmod +x /app/health_check.py
 
 # Switch to root user for supervisor (will run individual services as appropriate users)
 USER root
