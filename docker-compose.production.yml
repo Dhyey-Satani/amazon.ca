@@ -3,7 +3,7 @@ version: '3.8'
 services:
   amazon-job-monitor:
     build: .
-    container_name: amazon-job-monitor-full-stack
+    container_name: amazon-job-monitor-backend
     restart: unless-stopped
     
     ports:
@@ -15,14 +15,14 @@ services:
       - LOG_LEVEL=INFO
       - DATABASE_PATH=/app/data/jobs.db
       - NODE_ENV=production
-      - PORT=8081
+      - PORT=8080
     
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3

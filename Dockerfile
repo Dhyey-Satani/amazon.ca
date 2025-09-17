@@ -1,22 +1,4 @@
-# Multi-stage build: First stage for frontend build
-FROM node:18-alpine as frontend-builder
-
-# Set working directory for frontend
-WORKDIR /frontend
-
-# Copy frontend package files
-COPY job-monitor-frontend/package*.json ./
-
-# Install frontend dependencies (including dev dependencies for build)
-RUN npm install
-
-# Copy frontend source code
-COPY job-monitor-frontend/ .
-
-# Build frontend for production
-RUN npm run build
-
-# Second stage: Python backend with integrated frontend
+# Backend-only build for Amazon.ca scraper
 FROM python:3.11-slim
 
 # Set environment variables
@@ -24,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies including nginx
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     # Chrome dependencies
     wget \
@@ -35,11 +17,7 @@ RUN apt-get update && apt-get install -y \
     xvfb \
     # Additional utilities
     cron \
-    # Nginx for serving frontend
-    nginx \
     supervisor \
-    # For environment variable substitution
-    gettext-base \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Google Chrome
@@ -67,11 +45,7 @@ RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+') && \
     rm -rf /tmp/chromedriver* && \
     chromedriver --version
 
-# Copy built frontend from frontend-builder stage
-COPY --from=frontend-builder /frontend/dist /var/www/html
-
-# Copy nginx configuration
-COPY nginx-default.conf /etc/nginx/sites-available/default
+# Backend-only setup - no frontend files needed
 
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
@@ -103,9 +77,8 @@ COPY diagnose_502.py .
 COPY .env.example .
 
 # Create necessary directories and set permissions
-RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
+RUN mkdir -p logs data /var/log/supervisor && \
     chown -R botuser:botuser /app && \
-    chmod 755 /var/www/html && \
     chmod +x /app/api_bot.py && \
     chmod +x /app/health_check.py && \
     chmod +x /app/diagnose_502.py && \
@@ -116,9 +89,9 @@ RUN mkdir -p logs data /var/log/nginx /var/log/supervisor && \
 # Switch to root user for supervisor (will run individual services as appropriate users)
 USER root
 
-# Health check for the web server
+# Health check for the API server
 HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8080}/ || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
 # Default environment variables
 ENV USE_SELENIUM=true \
