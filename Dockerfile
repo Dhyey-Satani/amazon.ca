@@ -74,10 +74,10 @@ ENV USE_SELENIUM=true \
     POLL_INTERVAL=10 \
     LOG_LEVEL=INFO \
     DATABASE_PATH=/app/data/jobs.db \
-    API_PORT=8080
+    API_PORT=8000
 
 # Expose port for API
-EXPOSE 8080
+EXPOSE 8000
 
 # Run the API server (Railway will handle the persistent data via volumes)
 CMD ["python", "api_bot.py"]
