@@ -69,7 +69,8 @@ HEALTHCHECK --interval=5m --timeout=30s --start-period=30s --retries=3 \
 ENV USE_SELENIUM=true \
     POLL_INTERVAL=10 \
     LOG_LEVEL=INFO \
-    DATABASE_PATH=/app/data/jobs.db
+    DATABASE_PATH=/app/data/jobs.db \
+    API_PORT=8080
 
 # Expose port for API
 EXPOSE 8080

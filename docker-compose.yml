@@ -12,10 +12,15 @@ services:
       - POLL_INTERVAL=10
       - LOG_LEVEL=INFO
       - DATABASE_PATH=/app/data/jobs.db
+      - API_PORT=8080
     
     # Load environment variables from .env file
     env_file:
       - .env
+    
+    # Expose API port
+    ports:
+      - "8080:8080"
     
     # Persistent volumes
     volumes:
@@ -50,10 +55,3 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-# Create named volumes for data persistence
-volumes:
-  bot_data:
-    driver: local
-  bot_logs:
-    driver: local
