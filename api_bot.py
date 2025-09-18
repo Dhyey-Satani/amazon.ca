@@ -66,6 +66,26 @@ class JobScraper:
     """Handles job scraping from target websites."""
     
     def __init__(self, use_selenium: bool = True):
+        # Set environment variables to fix cache permission issues early
+        os.environ['HOME'] = '/app'
+        os.environ['XDG_CACHE_HOME'] = '/app/.cache'
+        os.environ['WDM_CACHE_DIR'] = '/app/.wdm'
+        os.environ['SE_CACHE_PATH'] = '/app/.cache/selenium'
+        
+        # Create cache directories with proper permissions
+        for cache_dir in ['/app/.cache', '/app/.wdm', '/app/.cache/selenium', '/app/.chrome_user_data']:
+            try:
+                os.makedirs(cache_dir, exist_ok=True)
+            except PermissionError:
+                # If we can't create cache dirs, disable Selenium
+                use_selenium = False
+                break
+        
+        # Disable Selenium in production environment if permission issues
+        if os.getenv('USER') == 'botuser' or '/app' in os.getcwd():
+            self.logger = logging.getLogger('scraper')
+            self.logger.info("Production environment detected, using enhanced fallback mode")
+        
         self.use_selenium = use_selenium
         self.logger = logging.getLogger('scraper')
         self.driver = None
@@ -118,8 +138,8 @@ class JobScraper:
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
             # Set user data directory to writable location
-            import tempfile
-            user_data_dir = tempfile.mkdtemp(prefix='chrome_user_data_')
+            user_data_dir = os.path.join('/app', '.chrome_user_data')
+            os.makedirs(user_data_dir, exist_ok=True)
             chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
             
             # Try different Chrome binary locations
@@ -173,11 +193,24 @@ class JobScraper:
                     from selenium.webdriver.chrome.service import Service
                     from webdriver_manager.chrome import ChromeDriverManager
                     
-                    # Set cache directory to writable location
-                    cache_dir = os.path.join(os.getcwd(), '.wdm')
+                    # Set cache directory to writable location within /app
+                    cache_dir = os.path.join('/app', '.wdm')
                     os.makedirs(cache_dir, exist_ok=True)
                     
-                    driver_manager = ChromeDriverManager(cache_valid_range=7)
+                    # Set WDM environment variables to use our writable directory
+                    os.environ['WDM_LOCAL'] = '1'
+                    os.environ['WDM_LOG_LEVEL'] = '0'
+                    os.environ['WDM_CACHE_DIR'] = cache_dir
+                    
+                    # Also set selenium cache directory
+                    selenium_cache_dir = os.path.join('/app', '.cache', 'selenium')
+                    os.makedirs(selenium_cache_dir, exist_ok=True)
+                    os.environ['SE_CACHE_PATH'] = selenium_cache_dir
+                    
+                    driver_manager = ChromeDriverManager(
+                        cache_valid_range=7,
+                        path=cache_dir
+                    )
                     driver_path = driver_manager.install()
                     service = Service(driver_path)
                     self.driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -197,7 +230,12 @@ class JobScraper:
         except Exception as e:
             self.logger.error(f"Failed to setup Selenium: {e}")
             self.logger.warning("Selenium not available. Will use requests+BeautifulSoup only.")
-            self.use_selenium = False
+            
+            # Check if it's a permission error and disable Selenium permanently
+            if "Permission denied" in str(e) or "PermissionError" in str(e):
+                self.logger.warning("Permission error detected, disabling Selenium for this session")
+                self.use_selenium = False
+            
             raise
     
     def scrape_jobs(self, url: str) -> List[JobPosting]:
