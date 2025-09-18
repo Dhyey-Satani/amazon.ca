@@ -92,65 +92,186 @@ class JobScraper:
         self.session.headers.update(self.headers)
     
     def setup_selenium(self):
-        """Setup Selenium WebDriver with Chrome."""
+        """Setup Selenium WebDriver with Chrome for production environment."""
         if self.driver:
             return
         
         try:
             chrome_options = Options()
+            # Production-optimized Chrome options
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
             chrome_options.add_argument('--disable-gpu')
+            chrome_options.add_argument('--disable-extensions')
+            chrome_options.add_argument('--disable-background-timer-throttling')
+            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+            chrome_options.add_argument('--disable-renderer-backgrounding')
             chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument(f'--user-agent={self.headers["User-Agent"]}')
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_argument('--disable-web-security')
+            chrome_options.add_argument('--allow-running-insecure-content')
+            chrome_options.add_argument('--disable-features=TranslateUI')
+            chrome_options.add_argument('--disable-ipc-flooding-protection')
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
-            # Try to create the driver
-            try:
-                self.driver = webdriver.Chrome(options=chrome_options)
-            except Exception as driver_error:
-                self.logger.warning(f"Could not initialize Chrome driver: {driver_error}")
-                self.logger.info("Trying with ChromeDriverManager (auto-download)...")
-                from selenium.webdriver.chrome.service import Service
-                from webdriver_manager.chrome import ChromeDriverManager
-                service = Service(ChromeDriverManager().install())
-                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            # Set user data directory to writable location
+            import tempfile
+            user_data_dir = tempfile.mkdtemp(prefix='chrome_user_data_')
+            chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
             
+            # Try different Chrome binary locations
+            chrome_binary_paths = [
+                '/usr/bin/google-chrome',
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium'
+            ]
+            
+            for chrome_path in chrome_binary_paths:
+                if os.path.exists(chrome_path):
+                    chrome_options.binary_location = chrome_path
+                    self.logger.info(f"Using Chrome binary: {chrome_path}")
+                    break
+            
+            # Try to create the driver with multiple fallback approaches
+            driver_created = False
+            
+            # Method 1: Try with system chromedriver
+            try:
+                from selenium.webdriver.chrome.service import Service
+                
+                chromedriver_paths = [
+                    '/usr/bin/chromedriver',
+                    '/usr/local/bin/chromedriver',
+                    '/opt/chromedriver/chromedriver'
+                ]
+                
+                for driver_path in chromedriver_paths:
+                    if os.path.exists(driver_path):
+                        service = Service(driver_path)
+                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                        driver_created = True
+                        self.logger.info(f"Chrome driver initialized with: {driver_path}")
+                        break
+                
+                if not driver_created:
+                    # Fallback: Try without explicit service
+                    self.driver = webdriver.Chrome(options=chrome_options)
+                    driver_created = True
+                    self.logger.info("Chrome driver initialized with default service")
+                    
+            except Exception as e:
+                self.logger.warning(f"Failed to initialize with system driver: {e}")
+            
+            # Method 2: Try with WebDriverManager (auto-download)
+            if not driver_created:
+                try:
+                    self.logger.info("Trying with ChromeDriverManager (auto-download)...")
+                    from selenium.webdriver.chrome.service import Service
+                    from webdriver_manager.chrome import ChromeDriverManager
+                    
+                    # Set cache directory to writable location
+                    cache_dir = os.path.join(os.getcwd(), '.wdm')
+                    os.makedirs(cache_dir, exist_ok=True)
+                    
+                    driver_manager = ChromeDriverManager(cache_valid_range=7)
+                    driver_path = driver_manager.install()
+                    service = Service(driver_path)
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                    driver_created = True
+                    self.logger.info("Chrome driver initialized with WebDriverManager")
+                    
+                except Exception as e:
+                    self.logger.error(f"WebDriverManager failed: {e}")
+            
+            if not driver_created:
+                raise Exception("All Chrome driver initialization methods failed")
+            
+            # Configure driver to avoid detection
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             self.logger.info("Selenium WebDriver initialized successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to setup Selenium: {e}")
             self.logger.warning("Selenium not available. Will use requests+BeautifulSoup only.")
+            self.use_selenium = False
             raise
     
     def scrape_jobs(self, url: str) -> List[JobPosting]:
-        """Scrape jobs from the given URL."""
+        """Scrape jobs from the given URL with robust fallback mechanisms."""
+        jobs = []
+        
+        # Try Selenium first if enabled
+        if self.use_selenium:
+            try:
+                if not self.driver:
+                    self.setup_selenium()
+                jobs = self._scrape_with_selenium(url)
+                if jobs:
+                    self.logger.info(f"Successfully scraped {len(jobs)} jobs with Selenium")
+                    return jobs
+            except Exception as e:
+                self.logger.warning(f"Selenium scraping failed: {e}")
+                self.logger.info("Falling back to requests+BeautifulSoup mode")
+                # Don't re-raise, continue to fallback
+        
+        # Fallback to requests+BeautifulSoup
         try:
-            if self.use_selenium and not self.driver:
-                self.setup_selenium()
-            
-            if self.use_selenium and self.driver:
-                return self._scrape_with_selenium(url)
+            jobs = self._scrape_with_requests(url)
+            if jobs:
+                self.logger.info(f"Successfully scraped {len(jobs)} jobs with requests+BeautifulSoup")
             else:
-                return self._scrape_with_requests(url)
-                
+                self.logger.info("No jobs found with either method")
+            return jobs
         except Exception as e:
-            self.logger.error(f"Error scraping {url}: {e}")
+            self.logger.error(f"All scraping methods failed for {url}: {e}")
             return []
     
     def _scrape_with_requests(self, url: str) -> List[JobPosting]:
-        """Scrape jobs using requests and BeautifulSoup."""
+        """Scrape jobs using requests and BeautifulSoup with enhanced error handling."""
         try:
-            response = self.session.get(url, timeout=30)
+            self.logger.info(f"Attempting to scrape {url} with requests+BeautifulSoup")
+            
+            # Configure session with better headers and timeout
+            self.session.headers.update({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Upgrade-Insecure-Requests': '1'
+            })
+            
+            response = self.session.get(url, timeout=30, allow_redirects=True)
             response.raise_for_status()
             
-            soup = BeautifulSoup(response.content, 'html.parser')
-            return self._parse_job_listings(soup, url)
+            # Check if we got a valid response
+            if len(response.content) < 100:
+                self.logger.warning(f"Response too short ({len(response.content)} bytes), likely blocked")
+                return []
             
+            self.logger.info(f"Successfully fetched page content ({len(response.content)} bytes)")
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Enhanced parsing with multiple strategies
+            jobs = self._parse_job_listings(soup, url)
+            
+            if not jobs:
+                # Try alternative parsing methods
+                self.logger.info("No jobs found with primary parsing, trying alternative methods")
+                jobs = self._parse_with_alternative_methods(soup, url)
+            
+            return jobs
+            
+        except requests.exceptions.RequestException as e:
+            self.logger.error(f"Network error scraping with requests: {e}")
+            return []
         except Exception as e:
             self.logger.error(f"Failed to scrape with requests: {e}")
             return []
@@ -174,8 +295,94 @@ class JobScraper:
             self.logger.error(f"Failed to scrape with Selenium: {e}")
             return []
     
+    def _parse_with_alternative_methods(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
+        """Alternative parsing methods when primary parsing fails."""
+        jobs = []
+        
+        try:
+            # Method 1: Look for any links that might be job-related
+            self.logger.info("Trying alternative method 1: Link-based parsing")
+            all_links = soup.find_all('a', href=True)
+            
+            job_keywords = ['job', 'position', 'role', 'career', 'opportunity', 'apply', 'hire', 'work']
+            potential_jobs = []
+            
+            for link in all_links:
+                href = link.get('href', '')
+                text = link.get_text(strip=True)
+                
+                # Check if link or text contains job-related keywords
+                if (text and len(text) > 3 and len(text) < 200 and
+                    any(keyword in href.lower() for keyword in job_keywords) or
+                    any(keyword in text.lower() for keyword in job_keywords)):
+                    
+                    # Build full URL
+                    if href.startswith('/'):
+                        full_url = base_url.rstrip('/') + href
+                    elif href.startswith(('http://', 'https://')):
+                        full_url = href
+                    else:
+                        continue
+                    
+                    # Generate basic job posting
+                    job_id = hashlib.md5(full_url.encode()).hexdigest()[:12]
+                    
+                    job = JobPosting(
+                        job_id=job_id,
+                        title=text,
+                        url=full_url,
+                        location="Location TBD",
+                        posted_date=datetime.now().strftime("%Y-%m-%d"),
+                        description=f"Potential job opportunity: {text}"
+                    )
+                    potential_jobs.append(job)
+            
+            # Filter and limit results
+            filtered_jobs = []
+            seen_urls = set()
+            
+            for job in potential_jobs[:20]:  # Limit to first 20 potential jobs
+                if (job.url not in seen_urls and 
+                    'amazon' in job.url.lower() and
+                    len(job.title) > 5):
+                    seen_urls.add(job.url)
+                    filtered_jobs.append(job)
+            
+            self.logger.info(f"Alternative method 1 found {len(filtered_jobs)} potential jobs")
+            jobs.extend(filtered_jobs[:5])  # Take top 5
+            
+            # Method 2: Look for structured data or JSON-LD
+            self.logger.info("Trying alternative method 2: Structured data parsing")
+            script_tags = soup.find_all('script', type='application/ld+json')
+            
+            for script in script_tags:
+                try:
+                    data = json.loads(script.string)
+                    if isinstance(data, dict) and data.get('@type') == 'JobPosting':
+                        job_id = hashlib.md5(str(data).encode()).hexdigest()[:12]
+                        
+                        job = JobPosting(
+                            job_id=job_id,
+                            title=data.get('title', 'Job Title TBD'),
+                            url=data.get('url', base_url),
+                            location=str(data.get('jobLocation', {}).get('address', 'Location TBD')),
+                            posted_date=data.get('datePosted', datetime.now().strftime("%Y-%m-%d")),
+                            description=data.get('description', '')[:500]  # Limit description
+                        )
+                        jobs.append(job)
+                        
+                except (json.JSONDecodeError, KeyError):
+                    continue
+            
+            self.logger.info(f"Alternative methods found total {len(jobs)} jobs")
+            return jobs
+            
+        except Exception as e:
+            self.logger.error(f"Alternative parsing methods failed: {e}")
+            return []
+    
     def _parse_job_listings(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
-        """Parse job listings from BeautifulSoup object."""
+        """Parse job listings from BeautifulSoup object with improved error handling."""
         jobs = []
         
         try:
@@ -186,7 +393,7 @@ class JobScraper:
                     self.logger.info(f"Found {len(real_jobs)} real job postings")
                     return real_jobs
                 else:
-                    self.logger.info("No real job postings found on Amazon page")
+                    self.logger.info("No real job postings found on Amazon page with primary method")
                     return []
             else:
                 # Use generic job parsing for non-Amazon sites
@@ -408,7 +615,20 @@ class JobMonitor:
     """Main job monitoring class that manages scraping and job storage."""
     
     def __init__(self):
+        self.config = self.load_config()
+        self.setup_logging()
+        
+        # Initialize scraper with fallback configuration
         self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'true').lower() == 'true')
+        
+        # Auto-disable Selenium if environment doesn't support it
+        if self.scraper.use_selenium:
+            try:
+                self.scraper.setup_selenium()
+            except Exception as e:
+                self.logger.warning(f"Selenium setup failed, disabling: {e}")
+                self.scraper.use_selenium = False
+        
         self.jobs: Dict[str, JobPosting] = {}
         self.logs = deque(maxlen=100)  # Keep last 100 log messages
         self.is_running = False
@@ -432,7 +652,34 @@ class JobMonitor:
         self._load_jobs()
         
         # Setup logging handler to capture logs
-        self._setup_log_handler()
+    def load_config(self) -> Dict:
+        """Load configuration from environment variables with production defaults."""
+        return {
+            'use_selenium': os.getenv('USE_SELENIUM', 'true').lower() == 'true',
+            'poll_interval': int(os.getenv('POLL_INTERVAL', '30')),
+            'log_level': os.getenv('LOG_LEVEL', 'INFO').upper(),
+            'auto_start': os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true'
+        }
+    
+    def setup_logging(self):
+        """Setup logging for production environment."""
+        # Ensure logs directory exists
+        os.makedirs('logs', exist_ok=True)
+        
+        # Production logging configuration
+        logging.basicConfig(
+            level=getattr(logging, self.config.get('log_level', 'INFO')),
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('logs/api_bot.log'),
+                logging.StreamHandler()
+            ]
+        )
+        
+        # Reduce noise from third-party libraries
+        logging.getLogger('selenium').setLevel(logging.WARNING)
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('requests').setLevel(logging.WARNING)
     
     def _setup_log_handler(self):
         """Setup a log handler to capture logs in memory."""
@@ -726,14 +973,27 @@ async def clear_jobs():
 
 if __name__ == "__main__":
     # Auto-start monitoring if configured
-    if os.getenv('AUTO_START_MONITORING', 'false').lower() == 'true':
-        import asyncio
-        asyncio.create_task(job_monitor.start_monitoring())
+    async def startup():
+        if os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true':
+            await job_monitor.start_monitoring()
+            job_monitor.logger.info("Auto-started job monitoring")
+    
+    # Schedule startup
+    import asyncio
+    asyncio.create_task(startup())
+    
+    # Get port from environment
+    port = int(os.getenv('API_PORT', '8000'))
+    host = os.getenv('API_HOST', '0.0.0.0')
+    
+    job_monitor.logger.info(f"Starting API server on {host}:{port}")
     
     # Run the API server
     uvicorn.run(
         "api_bot:app", 
-        host="0.0.0.0", 
-        port=int(os.getenv('API_PORT', '8000')),
-        reload=True  # Enable auto-reload for development
+        host=host, 
+        port=port,
+        reload=False,  # Disable reload in production
+        access_log=True,
+        log_level="info"
     )
