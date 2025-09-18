@@ -86,4 +86,4 @@ ENV USE_SELENIUM=true \
 EXPOSE 8000
 
 # Start virtual display for headless Chrome
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 & python api_bot.py"]
+CMD ["python", "api_bot.py"]

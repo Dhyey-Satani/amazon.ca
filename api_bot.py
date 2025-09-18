@@ -1010,21 +1010,28 @@ async def clear_jobs():
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    # Auto-start monitoring if configured
-    async def startup():
-        if os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true':
-            await job_monitor.start_monitoring()
-            job_monitor.logger.info("Auto-started job monitoring")
-    
-    # Schedule startup
-    import asyncio
-    asyncio.create_task(startup())
-    
     # Get port from environment
     port = int(os.getenv('API_PORT', '8000'))
     host = os.getenv('API_HOST', '0.0.0.0')
     
     job_monitor.logger.info(f"Starting API server on {host}:{port}")
+    
+    # Auto-start monitoring after server starts
+    if os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true':
+        import threading
+        import time
+        
+        def delayed_start():
+            time.sleep(2)  # Wait for server to start
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(job_monitor.start_monitoring())
+            job_monitor.logger.info("Auto-started job monitoring")
+        
+        # Start monitoring in background thread
+        monitor_thread = threading.Thread(target=delayed_start, daemon=True)
+        monitor_thread.start()
     
     # Run the API server
     uvicorn.run(

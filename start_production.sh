@@ -4,7 +4,7 @@
 echo "Starting Amazon Job Monitor API Server..."
 
 # Set environment defaults for production
-export USE_SELENIUM=${USE_SELENIUM:-true}
+export USE_SELENIUM=${USE_SELENIUM:-false}  # Default to false for reliability
 export POLL_INTERVAL=${POLL_INTERVAL:-30}
 export LOG_LEVEL=${LOG_LEVEL:-INFO}
 export API_PORT=${API_PORT:-8000}
@@ -15,13 +15,21 @@ export AUTO_START_MONITORING=${AUTO_START_MONITORING:-true}
 mkdir -p /app/data /app/logs /app/.cache
 
 # Ensure proper permissions
-chmod 755 /app/data /app/logs /app/.cache
+chmod 755 /app/data /app/logs /app/.cache 2>/dev/null || true
 
-# Start Xvfb for headless Chrome (if using Selenium)
-if [ "$USE_SELENIUM" = "true" ]; then
+# Only start Xvfb if Selenium is enabled and we're not in a restricted environment
+if [ "$USE_SELENIUM" = "true" ] && [ -w "/tmp" ]; then
     echo "Starting virtual display for headless Chrome..."
+    # Kill any existing Xvfb processes
+    pkill Xvfb 2>/dev/null || true
+    rm -f /tmp/.X99-lock 2>/dev/null || true
+    
+    # Start Xvfb in background
     Xvfb :99 -screen 0 1920x1080x24 &
     export DISPLAY=:99
+    sleep 2
+else
+    echo "Selenium disabled or restricted environment - using requests only"
 fi
 
 # Health check function
