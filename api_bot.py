@@ -179,26 +179,17 @@ class JobScraper:
         jobs = []
         
         try:
-            # Check if this is Amazon hiring site
+            # Only extract real job postings - no fake data generation
             if "amazon" in base_url.lower():
-                # First, try to find actual job postings on the page
                 real_jobs = self._extract_real_amazon_jobs(soup, base_url)
                 if real_jobs:
                     self.logger.info(f"Found {len(real_jobs)} real job postings")
                     return real_jobs
-                
-                # Fallback: If no real jobs found, scrape job opportunity categories
-                # and generate direct application links
-                jobs = self._generate_amazon_application_links(soup, base_url)
-                if jobs:
-                    self.logger.info(f"Generated {len(jobs)} Amazon application links")
-                    return jobs
-                
-                # Final fallback: Generate category-based job opportunities
-                return self._generate_category_based_jobs(soup, base_url)
-            
+                else:
+                    self.logger.info("No real job postings found on Amazon page")
+                    return []
             else:
-                # Fallback: Use generic job parsing for non-Amazon sites
+                # Use generic job parsing for non-Amazon sites
                 return self._parse_generic_jobs(soup, base_url)
                 
         except Exception as e:
@@ -308,11 +299,11 @@ class JobScraper:
             self.driver = None
     
     def _extract_real_amazon_jobs(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
-        """Extract real job postings from Amazon hiring page."""
+        """Extract ONLY real job postings from Amazon hiring page - no fake data."""
         jobs = []
         
         try:
-            # Look for actual job cards or job links
+            # Look for actual job cards or job links with strict criteria
             job_selectors = [
                 '.job-card',
                 '.job-tile', 
@@ -321,7 +312,9 @@ class JobScraper:
                 '.opening-job',
                 '[data-testid="job-card"]',
                 '.jobResult',
-                '.job-item'
+                '.job-item',
+                '[class*="job"][class*="card"]',
+                '[class*="position"][class*="card"]'
             ]
             
             job_elements = []
@@ -329,10 +322,10 @@ class JobScraper:
                 elements = soup.select(selector)
                 if elements:
                     job_elements = elements
-                    self.logger.info(f"Found {len(elements)} real job elements using selector: {selector}")
+                    self.logger.info(f"Found {len(elements)} potential job elements using selector: {selector}")
                     break
             
-            # Also look for specific Amazon job URLs in links
+            # Only look for genuine Amazon job application URLs in links
             job_links = soup.find_all('a', href=True)
             real_job_urls = set()
             
@@ -340,217 +333,82 @@ class JobScraper:
                 href = link.get('href', '')
                 text = link.get_text(strip=True)
                 
-                # Look for actual Amazon job application URLs
-                if any(pattern in href for pattern in ['apply', 'application', 'job-details', 'position']):
+                # More flexible criteria: Accept URLs that are likely job applications
+                if (any(pattern in href.lower() for pattern in ['/job', '/position', '/apply', '/application', 'careers']) and 
+                    ('amazon' in href.lower() or 'amazon' in base_url.lower()) and
+                    text and len(text) > 3):
+                    
                     if href.startswith('/'):
                         full_url = base_url.rstrip('/') + href
                     else:
                         full_url = href
                     
-                    # Extract job info from link
-                    job_title = text if text and len(text) > 3 else "Amazon Position"
-                    if any(keyword in job_title.lower() for keyword in ['apply', 'warehouse', 'associate', 'driver', 'fulfillment']):
-                        real_job_urls.add((full_url, job_title))
+                    # More flexible job title validation
+                    if (len(text) > 3 and 
+                        not any(skip in text.lower() for skip in ['home', 'about', 'contact', 'help', 'support', 'privacy', 'terms'])):
+                        real_job_urls.add((full_url, text))
             
-            # Process real job URLs
+            # Process real job URLs with more flexible validation
             for url, title in real_job_urls:
-                import hashlib
-                job_id = hashlib.md5(url.encode()).hexdigest()[:12]
-                
-                job = JobPosting(
-                    job_id=job_id,
-                    title=title,
-                    url=url,
-                    location="Multiple Locations",
-                    posted_date=datetime.now().strftime("%Y-%m-%d"),
-                    description=f"Direct application link for {title}"
-                )
-                jobs.append(job)
-            
-            # Process job elements if found
-            for element in job_elements:
-                job = self._extract_job_info_generic(element, base_url)
-                if job and job.url and 'apply' in job.url.lower():
+                # More flexible validation: URL should contain job-related patterns
+                if ('amazon' in url.lower() or 'amazon' in base_url.lower()):
+                    
+                    import hashlib
+                    job_id = hashlib.md5(url.encode()).hexdigest()[:12]
+                    
+                    job = JobPosting(
+                        job_id=job_id,
+                        title=title,
+                        url=url,
+                        location="Location TBD",  # Will be determined from actual job page
+                        posted_date=datetime.now().strftime("%Y-%m-%d"),
+                        description=f"Real Amazon job posting: {title}"
+                    )
                     jobs.append(job)
             
-            return jobs[:20]  # Limit to prevent overwhelming
+            # Process job elements if found (with strict validation)
+            for element in job_elements:
+                job = self._extract_job_info_generic(element, base_url)
+                if (job and job.url and 
+                    ('amazon' in job.url.lower()) and 
+                    ('/job' in job.url.lower() or '/position' in job.url.lower() or '/apply' in job.url.lower())):
+                    jobs.append(job)
+            
+            # Remove duplicates and limit results
+            seen_urls = set()
+            unique_jobs = []
+            for job in jobs:
+                if job.url not in seen_urls:
+                    seen_urls.add(job.url)
+                    unique_jobs.append(job)
+            
+            self.logger.info(f"Extracted {len(unique_jobs)} verified real job postings")
+            return unique_jobs[:10]  # Limit to top 10 most relevant
             
         except Exception as e:
             self.logger.error(f"Error extracting real Amazon jobs: {e}")
             return []
     
     def _generate_amazon_application_links(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
-        """Generate direct Amazon job application links based on available job categories."""
-        jobs = []
-        
-        try:
-            # Extract location information from the page
-            locations = ['Toronto, ON', 'Vancouver, BC', 'Calgary, AB', 'Montreal, QC']
-            
-            # Amazon job categories with their direct application patterns
-            job_categories = [
-                {
-                    'title': 'Warehouse Associate',
-                    'keywords': ['warehouse', 'fulfillment', 'sorting'],
-                    'url_pattern': 'warehouse-jobs',
-                    'description': 'Warehouse operations including picking, packing, and sorting'
-                },
-                {
-                    'title': 'Delivery Associate', 
-                    'keywords': ['delivery', 'driver', 'transport'],
-                    'url_pattern': 'delivery-jobs',
-                    'description': 'Package delivery and customer service roles'
-                },
-                {
-                    'title': 'Fulfillment Center Associate',
-                    'keywords': ['fulfillment', 'center', 'operations'],
-                    'url_pattern': 'fulfillment-jobs', 
-                    'description': 'Order fulfillment and logistics operations'
-                },
-                {
-                    'title': 'Sortation Associate',
-                    'keywords': ['sortation', 'sorting', 'routing'],
-                    'url_pattern': 'sortation-jobs',
-                    'description': 'Package sorting and routing for delivery'
-                },
-                {
-                    'title': 'Customer Service Associate',
-                    'keywords': ['customer', 'service', 'support'],
-                    'url_pattern': 'customer-service-jobs',
-                    'description': 'Customer support and service roles'
-                }
-            ]
-            
-            page_text = soup.get_text().lower()
-            
-            # Check which job categories are mentioned on the page
-            for category in job_categories:
-                if any(keyword in page_text for keyword in category['keywords']):
-                    
-                    for location in locations[:3]:  # Limit locations
-                        # Extract postal code for location-based search
-                        postal_code = self._extract_postal_code(location)
-                        
-                        # Create proper Amazon application URL
-                        # Using Amazon's actual job search and application flow
-                        application_url = f"https://hiring.amazon.ca/app#/application/start?location={postal_code}&jobCategory={category['url_pattern']}"
-                        
-                        job_id = f"AMZ-{postal_code}-{hash(category['title']) % 10000}"
-                        
-                        job = JobPosting(
-                            job_id=job_id,
-                            title=category['title'],
-                            url=application_url,
-                            location=location,
-                            posted_date=datetime.now().strftime("%Y-%m-%d"),
-                            description=category['description']
-                        )
-                        jobs.append(job)
-            
-            return jobs
-            
-        except Exception as e:
-            self.logger.error(f"Error generating Amazon application links: {e}")
-            return []
+        """REMOVED: This method no longer generates fake job data."""
+        self.logger.info("Fake job generation disabled - returning empty list")
+        return []
     
     def _generate_category_based_jobs(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
-        """Generate job opportunities based on detected categories (fallback method)."""
-        jobs = []
-        
-        try:
-            # Extract page content to identify available opportunities
-            page_text = soup.get_text().lower()
-            
-            # Check for hiring indicators
-            hiring_indicators = [
-                'now hiring', 'apply now', 'join our team', 'positions available',
-                'competitive pay', 'immediate start', 'flexible schedules'
-            ]
-            
-            if not any(indicator in page_text for indicator in hiring_indicators):
-                self.logger.warning("No hiring indicators found on page")
-                return []
-            
-            # Get Canadian locations
-            locations = ['Toronto, ON', 'Vancouver, BC', 'Calgary, AB']
-            
-            # Direct job opportunity links found on Amazon hiring pages
-            job_opportunities = [
-                {
-                    'title': 'Warehouse Associate Positions',
-                    'url': f"{base_url.rstrip('/')}/job-opportunities/warehouse-jobs",
-                    'description': 'Multiple warehouse positions available with competitive pay and benefits'
-                },
-                {
-                    'title': 'Fulfillment Center Opportunities', 
-                    'url': f"{base_url.rstrip('/')}/job-opportunities/fulfillment-centre-associate",
-                    'description': 'Join our fulfillment team for package handling and order processing'
-                },
-                {
-                    'title': 'Delivery Associate Roles',
-                    'url': f"{base_url.rstrip('/')}/job-opportunities/delivery-associate",
-                    'description': 'Delivery and logistics positions with flexible schedules'
-                },
-                {
-                    'title': 'Sortation Center Jobs',
-                    'url': f"{base_url.rstrip('/')}/job-opportunities/sortation-centre-associate", 
-                    'description': 'Package sorting and routing positions'
-                }
-            ]
-            
-            # Only include opportunities that seem to be available based on page content
-            for opportunity in job_opportunities:
-                keywords = opportunity['title'].lower().split()
-                if any(keyword in page_text for keyword in keywords):
-                    
-                    for location in locations[:2]:  # Limit to 2 locations to avoid spam
-                        job_id = f"AMZ-CAT-{abs(hash(opportunity['title'] + location)) % 100000}"
-                        
-                        job = JobPosting(
-                            job_id=job_id,
-                            title=opportunity['title'],
-                            url=opportunity['url'],
-                            location=location,
-                            posted_date=datetime.now().strftime("%Y-%m-%d"),
-                            description=opportunity['description']
-                        )
-                        jobs.append(job)
-            
-            return jobs
-            
-        except Exception as e:
-            self.logger.error(f"Error generating category-based jobs: {e}")
-            return []
+        """REMOVED: This method no longer generates fake job data."""
+        self.logger.info("Fake job generation disabled - returning empty list")
+        return []
     
     def _extract_postal_code(self, location: str) -> str:
-        """Extract or map postal code for a given location."""
-        # Mapping of major Canadian cities to their central postal codes
-        postal_mapping = {
-            'toronto': 'M5V',
-            'vancouver': 'V6B', 
-            'calgary': 'T2P',
-            'montreal': 'H3B',
-            'ottawa': 'K1P',
-            'edmonton': 'T5J',
-            'mississauga': 'L5B',
-            'winnipeg': 'R3C',
-            'quebec city': 'G1R',
-            'hamilton': 'L8P'
-        }
-        
-        location_lower = location.lower()
-        for city, postal in postal_mapping.items():
-            if city in location_lower:
-                return postal
-        
-        # Default postal code if no match found
-        return 'M5V'
+        """REMOVED: This method was used for fake data generation."""
+        # This method is no longer needed since we don't generate fake jobs
+        return ""
 
 class JobMonitor:
     """Main job monitoring class that manages scraping and job storage."""
     
     def __init__(self):
-        self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'false').lower() == 'true')
+        self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'true').lower() == 'true')
         self.jobs: Dict[str, JobPosting] = {}
         self.logs = deque(maxlen=100)  # Keep last 100 log messages
         self.is_running = False
@@ -564,7 +422,7 @@ class JobMonitor:
         
         # Configuration
         self.target_urls = [
-            os.getenv('AMAZON_URLS', 'https://hiring.amazon.ca').split(',')[0]
+            os.getenv('AMAZON_URLS', 'https://hiring.amazon.ca/app#/jobsearch').split(',')[0]
         ]
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '30'))
         
@@ -667,12 +525,17 @@ class JobMonitor:
             try:
                 jobs = self.scraper.scrape_jobs(url.strip())
                 
+                if jobs:
+                    self.logger.info(f"Found {len(jobs)} real job postings from {url}")
+                else:
+                    self.logger.info(f"No real job postings found at {url}. Fake data generation has been disabled.")
+                
                 for job in jobs:
                     if job.job_id not in self.jobs:
                         self.jobs[job.job_id] = job
                         new_jobs_count += 1
                         self.stats['new_jobs_this_session'] += 1
-                        self.add_log('SUCCESS', f'New job found: {job.title} - {job.location}')
+                        self.add_log('SUCCESS', f'New REAL job found: {job.title} - {job.location} - {job.url}')
                         
                         # Open in browser if configured
                         if os.getenv('AUTO_OPEN_BROWSER', 'false').lower() == 'true':
@@ -686,9 +549,9 @@ class JobMonitor:
         
         if new_jobs_count > 0:
             self._save_jobs()
-            self.add_log('INFO', f'Check completed. Found {new_jobs_count} new jobs.')
+            self.add_log('INFO', f'Check completed. Found {new_jobs_count} new REAL jobs.')
         else:
-            self.add_log('DEBUG', 'Check completed. No new jobs found.')
+            self.add_log('INFO', '✅ Check completed. No fake data generated - only real job postings are returned.')
     
     def get_jobs(self, limit: int = 50) -> List[Dict]:
         """Get list of jobs."""
@@ -840,6 +703,15 @@ async def update_config(request: ConfigUpdateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/logs")
+async def clear_logs():
+    """Clear all log messages."""
+    try:
+        job_monitor.logs.clear()
+        return {"message": "All logs cleared", "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.delete("/jobs")
 async def clear_jobs():
     """Clear all stored jobs."""
@@ -863,5 +735,5 @@ if __name__ == "__main__":
         "api_bot:app", 
         host="0.0.0.0", 
         port=int(os.getenv('API_PORT', '8000')),
-        reload=False
+        reload=True  # Enable auto-reload for development
     )

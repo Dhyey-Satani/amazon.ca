@@ -81,6 +81,13 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Clear logs endpoint
+  async clearLogs() {
+    return this.request('/logs', {
+      method: 'DELETE',
+    });
+  }
 }
 
 export const apiClient = new ApiClient();

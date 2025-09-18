@@ -85,6 +85,15 @@ const Dashboard = ({ darkMode, onToggleDarkMode }) => {
     }
   };
 
+  const handleClearLogs = async () => {
+    try {
+      await apiClient.clearLogs();
+      await fetchData(); // Refresh data immediately
+    } catch (err) {
+      setError(`Failed to clear logs: ${err.message}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -165,15 +174,15 @@ const Dashboard = ({ darkMode, onToggleDarkMode }) => {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Jobs Table - Takes 2/3 of the width */}
-          <div className="lg:col-span-2">
+        <div className="space-y-6">
+          {/* Jobs Table - Full Width */}
+          <div>
             <JobTable jobs={jobs} />
           </div>
           
-          {/* Logs Panel - Takes 1/3 of the width */}
-          <div className="lg:col-span-1">
-            <LogsPanel logs={logs} />
+          {/* Activity Log - Full Width Below Jobs */}
+          <div>
+            <LogsPanel logs={logs} onClearLogs={handleClearLogs} />
           </div>
         </div>
       </main>

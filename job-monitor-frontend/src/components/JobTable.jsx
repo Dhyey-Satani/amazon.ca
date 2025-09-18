@@ -8,24 +8,14 @@ const JobTable = ({ jobs }) => {
   };
 
   const openJobLink = (url, jobTitle) => {
-    // Check if this is a direct application link
-    if (url.includes('application/start') || url.includes('apply') || url.includes('job-details')) {
-      // Direct application link - open in same tab for better UX
+    // Check if this is a real job posting
+    if (url.includes('application/start') || url.includes('apply') || url.includes('/job/') || url.includes('/position/')) {
+      // Real job posting - open directly
       window.open(url, '_blank', 'noopener,noreferrer');
     } else {
-      // Category page - open and provide guidance
-      window.open(url, '_blank', 'noopener,noreferrer');
-      
-      // Show user guidance
-      if (window.confirm(`Opening ${jobTitle} opportunities page. Once there, you can:
-
-1. Enter your location/postal code
-2. Select specific shifts and positions
-3. Click "Apply Now" for individual positions
-
-Would you like to continue?`)) {
-        // User confirmed, link already opened above
-        console.log('User proceeding to job application page');
+      // Other URL - open with confirmation
+      if (window.confirm(`Opening ${jobTitle} page. This appears to be a real job posting.\n\nContinue?`)) {
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
     }
   };
@@ -41,9 +31,10 @@ Would you like to continue?`)) {
           <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2-2v2m8 0V6a2 2 0 012 2v6a2 2 0 01-2 2H8a2 2 0 01-2-2V8a2 2 0 012-2h8zM8 14v.01M12 14v.01M16 14v.01" />
           </svg>
-          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No jobs found yet</h3>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No real jobs found yet</h3>
           <p className="text-gray-500 dark:text-gray-400 max-w-sm mx-auto">
-            Start monitoring to begin detecting new job postings. Jobs will appear here as they are discovered.
+            Monitoring for genuine job postings only. Fake data generation has been disabled. 
+            Real jobs will appear here when detected.
           </p>
         </div>
       </div>
@@ -92,12 +83,12 @@ Would you like to continue?`)) {
                       </div>
                     )}
                     {/* Show URL type indicator */}
-                    {(job.url.includes('application/start') || job.url.includes('apply')) && (
+                    {(job.url.includes('application/start') || job.url.includes('apply') || job.url.includes('/job/') || job.url.includes('/position/')) && (
                       <div className="text-xs text-green-600 dark:text-green-400 mt-1 flex items-center">
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
-                        Direct Application Link
+                        Verified Real Job Posting
                       </div>
                     )}
                   </div>
@@ -121,12 +112,12 @@ Would you like to continue?`)) {
                   <button
                     onClick={() => openJobLink(job.url, job.title)}
                     className="text-amazon-orange hover:text-orange-600 transition-colors duration-200 flex items-center"
-                    title={job.url.includes('application/start') || job.url.includes('apply') ? 'Direct application link' : 'View job opportunities'}
+                    title={job.url.includes('application/start') || job.url.includes('apply') || job.url.includes('/job/') || job.url.includes('/position/') ? 'Real job application link' : 'View job details'}
                   >
                     <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                     </svg>
-                    {job.url.includes('application/start') || job.url.includes('apply') ? 'Apply Now' : 'View Jobs'}
+                    {job.url.includes('application/start') || job.url.includes('apply') || job.url.includes('/job/') || job.url.includes('/position/') ? 'Apply Now' : 'View Details'}
                   </button>
                 </td>
               </tr>
