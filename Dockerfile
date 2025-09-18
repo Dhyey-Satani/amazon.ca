@@ -26,18 +26,18 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearm
     apt-get install -y google-chrome-stable && \
     rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver using new Chrome for Testing API
-RUN CHROME_VERSION=$(google-chrome --version | grep -oP '\d+') && \
-    CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_$CHROME_VERSION") && \
-    if [ $? -ne 0 ] || [ -z "$CHROMEDRIVER_VERSION" ]; then \
-        # Fallback to latest stable if specific version not found
-        CHROMEDRIVER_VERSION=$(curl -s "https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE"); \
-    fi && \
-    wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/$CHROMEDRIVER_VERSION/linux64/chromedriver-linux64.zip" && \
-    unzip /tmp/chromedriver.zip -d /tmp/ && \
-    mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
-    chmod +x /usr/local/bin/chromedriver && \
-    rm -rf /tmp/chromedriver*
+# Install ChromeDriver - use package manager for reliability
+RUN apt-get update && \
+    apt-get install -y chromium-driver && \
+    rm -rf /var/lib/apt/lists/* && \
+    # Create symlink for compatibility
+    ln -sf /usr/bin/chromedriver /usr/local/bin/chromedriver || \
+    # Fallback: download directly if package not available
+    (wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/130.0.6723.69/linux64/chromedriver-linux64.zip" && \
+     unzip /tmp/chromedriver.zip -d /tmp/ && \
+     mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
+     chmod +x /usr/local/bin/chromedriver && \
+     rm -rf /tmp/chromedriver*)
 
 # Create app directory
 WORKDIR /app
