@@ -9,27 +9,39 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     CHROME_NO_SANDBOX=1 \
     DISPLAY=:99
 
-# Install system dependencies including Chrome
+# Install system dependencies first
 RUN apt-get update && apt-get install -y \
-    # Chrome dependencies
+    # Basic dependencies
     wget \
     gnupg \
     gpg \
     unzip \
     curl \
     xvfb \
-    # Chrome browser
-    google-chrome-stable \
     # Additional utilities
     cron \
     && rm -rf /var/lib/apt/lists/*
 
-# Add Google Chrome repository and install
+# Add Google Chrome repository and install Chrome with error handling
 RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg && \
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
     apt-get update && \
-    apt-get install -y google-chrome-stable && \
+    (apt-get install -y google-chrome-stable || \
+     # Fallback: Install chromium if google-chrome fails
+     apt-get install -y chromium-browser) && \
     rm -rf /var/lib/apt/lists/*
+
+# Install ChromeDriver with fallback options
+RUN (apt-get update && apt-get install -y chromium-driver && rm -rf /var/lib/apt/lists/*) || \
+    # Fallback: Download ChromeDriver directly
+    (CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
+     wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip" && \
+     unzip /tmp/chromedriver.zip -d /tmp/ && \
+     mv /tmp/chromedriver /usr/local/bin/chromedriver && \
+     chmod +x /usr/local/bin/chromedriver && \
+     rm -rf /tmp/chromedriver*) || \
+    # Final fallback: Use webdriver-manager in Python
+    echo "ChromeDriver will be managed by webdriver-manager"
 
 # Create app directory first
 WORKDIR /app

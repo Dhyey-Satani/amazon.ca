@@ -1,5 +1,35 @@
 # Render.com Deployment Guide for Amazon Job Monitor
 
+## Two Deployment Options
+
+### Option 1: Simple Deployment (Recommended) 🚀
+Use `Dockerfile.simple` for faster, more reliable deployment without Chrome.
+
+**Rename files:**
+1. `mv Dockerfile Dockerfile.chrome` (backup)
+2. `mv Dockerfile.simple Dockerfile`
+
+**Environment Variables:**
+```
+USE_SELENIUM=false
+API_PORT=8000
+POLL_INTERVAL=30
+LOG_LEVEL=INFO
+AUTO_START_MONITORING=true
+```
+
+### Option 2: Full Chrome Support
+Use the original `Dockerfile` if you need Chrome/Selenium support.
+
+**Environment Variables:**
+```
+USE_SELENIUM=true
+API_PORT=8000
+POLL_INTERVAL=30
+LOG_LEVEL=INFO
+AUTO_START_MONITORING=true
+```
+
 ## Quick Deployment Steps
 
 ### 1. Environment Variables
