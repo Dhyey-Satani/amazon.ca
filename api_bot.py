@@ -755,19 +755,26 @@ class JobMonitor:
     """Main job monitoring class that manages scraping and job storage."""
     
     def __init__(self):
+        # Initialize logger first before any other operations
+        self.logger = logging.getLogger('monitor')
+        
         self.config = self.load_config()
         self.setup_logging()
         
-        # Initialize scraper with fallback configuration
+        # Initialize scraper with enhanced fallback configuration
         self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'true').lower() == 'true')
         
-        # Auto-disable Selenium if environment doesn't support it
+        # Enhanced fallback: Don't fail if Selenium setup fails
         if self.scraper.use_selenium:
             try:
                 self.scraper.setup_selenium()
+                self.logger.info("Selenium initialized successfully")
             except Exception as e:
                 self.logger.warning(f"Selenium setup failed, disabling: {e}")
                 self.scraper.use_selenium = False
+                self.logger.info("Continuing with requests+BeautifulSoup mode")
+        else:
+            self.logger.info("Selenium disabled - using requests+BeautifulSoup mode")
         
         self.jobs: Dict[str, JobPosting] = {}
         self.logs = deque(maxlen=100)  # Keep last 100 log messages
@@ -786,12 +793,11 @@ class JobMonitor:
         ]
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '30'))
         
-        self.logger = logging.getLogger('monitor')
-        
         # Load existing jobs from file
         self._load_jobs()
         
         # Setup logging handler to capture logs
+        self._setup_log_handler()
     def load_config(self) -> Dict:
         """Load configuration from environment variables with production defaults."""
         return {
@@ -970,8 +976,34 @@ class JobMonitor:
         self.stop_monitoring()
         self.scraper.cleanup()
 
-# Initialize the job monitor
-job_monitor = JobMonitor()
+# Initialize the job monitor with error handling
+try:
+    job_monitor = JobMonitor()
+except Exception as e:
+    # Create a minimal logger for error reporting
+    import logging
+    logger = logging.getLogger('startup')
+    logger.error(f"Failed to initialize JobMonitor: {e}")
+    
+    # Create a fallback JobMonitor with minimal functionality
+    class FallbackJobMonitor:
+        def __init__(self):
+            self.logger = logging.getLogger('fallback')
+            self.jobs = {}
+            self.logs = []
+            self.is_running = False
+            self.stats = {'total_checks': 0, 'total_jobs_found': 0, 'new_jobs_this_session': 0, 'errors': 1}
+            self.logger.warning("Running in fallback mode due to initialization error")
+        
+        def get_jobs(self, limit=50): return []
+        def get_status(self): return {'is_running': False, 'error': 'Initialization failed'}
+        def get_logs(self, limit=50): return [{'timestamp': datetime.now().isoformat(), 'level': 'ERROR', 'message': 'JobMonitor failed to initialize'}]
+        async def start_monitoring(self): return
+        def stop_monitoring(self): return
+        def cleanup(self): return
+        def _save_jobs(self): return
+    
+    job_monitor = FallbackJobMonitor()
 
 # Cleanup on shutdown
 from contextlib import asynccontextmanager
