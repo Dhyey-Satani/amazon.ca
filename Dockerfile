@@ -31,13 +31,13 @@ RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearm
      apt-get install -y chromium-browser) && \
     rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver with fallback options
+# Install ChromeDriver with fallback options using new Chrome for Testing API
 RUN (apt-get update && apt-get install -y chromium-driver && rm -rf /var/lib/apt/lists/*) || \
-    # Fallback: Download ChromeDriver directly
-    (CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
-     wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip" && \
+    # Fallback: Download ChromeDriver using new Chrome for Testing API
+    (CHROME_VERSION=$(curl -sS https://googlechromelabs.github.io/chrome-for-testing/LATEST_RELEASE_STABLE) && \
+     wget -O /tmp/chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/linux64/chromedriver-linux64.zip" && \
      unzip /tmp/chromedriver.zip -d /tmp/ && \
-     mv /tmp/chromedriver /usr/local/bin/chromedriver && \
+     mv /tmp/chromedriver-linux64/chromedriver /usr/local/bin/chromedriver && \
      chmod +x /usr/local/bin/chromedriver && \
      rm -rf /tmp/chromedriver*) || \
     # Final fallback: Use webdriver-manager in Python
@@ -63,9 +63,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 USER botuser
 
 # Copy application code with proper ownership
-COPY --chown=botuser:botuser bot.py .
 COPY --chown=botuser:botuser api_bot.py .
-COPY --chown=botuser:botuser test_bot.py .
 COPY --chown=botuser:botuser .env.example .
 
 # Health check
@@ -80,7 +78,8 @@ ENV USE_SELENIUM=true \
     API_PORT=8000 \
     HOME=/app \
     WEBDRIVER_CHROME_DRIVER=/usr/bin/chromedriver \
-    CHROME_BIN=/usr/bin/google-chrome
+    CHROME_BIN=/usr/bin/google-chrome \
+    CHROME_USER_DATA_DIR=/app/.chrome_user_data
 
 # Expose port for API
 EXPOSE 8000

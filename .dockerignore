@@ -1,0 +1,18 @@
+# Docker ignore file - exclude unnecessary files from build context
+.git
+.gitignore
+README.md
+RENDER_DEPLOYMENT.md
+*.md
+jobs.json
+logs/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.coverage
+.pytest_cache/
+.env
+.DS_Store

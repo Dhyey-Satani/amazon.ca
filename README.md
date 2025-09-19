@@ -1,42 +1,75 @@
-# amazon.ca
-# Amazon.ca Job Scraper - Backend API
+# Amazon Job Monitor API
 
-A backend service that monitors Amazon.ca for job postings and provides a REST API interface.
+🚀 **Live Production API for Amazon Job Monitoring**
 
-## Quick Start
+A robust FastAPI-based job monitoring system that scrapes Amazon hiring pages and provides real-time job alerts.
 
-1. **Install Dependencies:**
-   ```bash
-   pip install -r requirements.txt
+## ✨ Features
+
+- **Real-time Job Monitoring**: Continuously monitors Amazon hiring pages
+- **REST API**: Full-featured API with job listing, status, and configuration endpoints
+- **Selenium Support**: JavaScript rendering for accurate job detection
+- **Fallback Mode**: Graceful degradation when Selenium fails
+- **Cloud Ready**: Optimized for Render.com deployment
+
+## 🚀 Quick Deployment
+
+### Deploy to Render.com
+
+1. **Connect your repository** to Render
+2. **Set environment variables**:
    ```
-
-2. **Run the API Server:**
-   ```bash
-   python api_bot.py
+   USE_SELENIUM=true
+   API_PORT=8000
+   AUTO_START_MONITORING=true
+   POLL_INTERVAL=30
    ```
+3. **Deploy** using the included Dockerfile
 
-3. **Access the API:**
-   - API Server: http://localhost:8080
-   - API Documentation: http://localhost:8080/docs
-
-## Docker Deployment
+### Local Development
 
 ```bash
-# Build and run
-docker-compose up --build
+# Install dependencies
+pip install -r requirements.txt
 
-# Access API at http://localhost:8080
+# Run the API server
+python api_bot.py
 ```
 
-## Frontend
+## 📡 API Endpoints
 
-The frontend has been moved to a separate repository for independent deployment.
+- `GET /` - API status
+- `GET /jobs` - List detected jobs
+- `GET /status` - Monitoring status
+- `GET /logs` - Recent logs
+- `POST /start` - Start monitoring
+- `POST /stop` - Stop monitoring
+- `DELETE /jobs` - Clear job history
 
-## Features
+## 🛠️ Configuration
 
-- Real-time job monitoring from Amazon.ca
-- REST API for job data access
-- Selenium-based web scraping
-- SQLite database storage
-- Docker support
-- Health checks and logging
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_SELENIUM` | `true` | Enable JavaScript rendering |
+| `API_PORT` | `8000` | API server port |
+| `POLL_INTERVAL` | `30` | Check interval (seconds) |
+| `AUTO_START_MONITORING` | `true` | Auto-start on deployment |
+| `AMAZON_URLS` | Amazon CA hiring page | Target URLs to monitor |
+
+## 📋 Files
+
+- `api_bot.py` - Main FastAPI application
+- `Dockerfile` - Container configuration
+- `requirements.txt` - Python dependencies
+- `RENDER_DEPLOYMENT.md` - Detailed deployment guide
+- `jobs.json` - Job storage (auto-generated)
+
+## 🔧 Troubleshooting
+
+See `RENDER_DEPLOYMENT.md` for detailed deployment instructions and troubleshooting tips.
+
+---
+
+**Ready for production deployment!** 🎉
