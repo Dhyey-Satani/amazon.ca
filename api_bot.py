@@ -69,6 +69,9 @@ class JobScraper:
         # Initialize logger first before using it
         self.logger = logging.getLogger('scraper')
         
+        # FORCE SELENIUM ONLY - No fallback to requests+BeautifulSoup
+        self.logger.info("SELENIUM-ONLY MODE: Forcing Selenium usage for all scraping operations")
+        
         # Detect operating system and set appropriate paths
         import platform
         is_windows = platform.system() == 'Windows'
@@ -107,46 +110,23 @@ class JobScraper:
             os.environ['SE_CACHE_PATH'] = os.path.join(base_dir, '.cache', 'selenium')
         
         # Create cache directories with proper permissions
-        selenium_cache_ok = True
         for cache_dir in cache_dirs:
             try:
                 os.makedirs(cache_dir, exist_ok=True)
                 self.logger.info(f"Created cache directory: {cache_dir}")
             except (PermissionError, OSError) as e:
                 self.logger.warning(f"Failed to create cache directory {cache_dir}: {e}")
-                if is_docker:  # Only disable on Docker if cache creation fails
-                    selenium_cache_ok = False
-                    break
+                # Continue anyway - we'll try to make Selenium work
         
-        # For Amazon job scraping, we need to respect the USE_SELENIUM setting
-        # Amazon requires JavaScript rendering for job listings
-        selenium_env_setting = os.getenv('USE_SELENIUM', 'true').lower() == 'true'
-        
-        # Determine if we should use Selenium based on environment and system capabilities
-        if use_selenium and selenium_env_setting and selenium_cache_ok:
-            self.logger.info(f"Selenium enabled for Amazon job scraping on {platform.system()} (JavaScript required)")
-            self.use_selenium = True
-        else:
-            if not selenium_env_setting:
-                self.logger.info("Selenium disabled by USE_SELENIUM environment variable")
-            elif not selenium_cache_ok:
-                self.logger.warning("Selenium disabled due to cache directory creation failure")
-            else:
-                self.logger.info("Selenium disabled - using enhanced requests mode")
-            self.use_selenium = False
+        # FORCE SELENIUM USAGE - No environment variable checks
+        self.logger.info(f"SELENIUM FORCED ON for Amazon job scraping on {platform.system()}")
+        self.use_selenium = True  # ALWAYS TRUE
         self.driver = None
         
-        # Setup session with connection pooling
-        self.session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(
-            pool_connections=10,
-            pool_maxsize=20,
-            max_retries=3
-        )
-        self.session.mount('http://', adapter)
-        self.session.mount('https://', adapter)
+        # Remove requests session setup - we only use Selenium
+        self.session = None
         
-        # Setup headers
+        # Setup headers for Selenium
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -155,7 +135,6 @@ class JobScraper:
             'Connection': 'keep-alive',
             'Upgrade-Insecure-Requests': '1',
         }
-        self.session.headers.update(self.headers)
     
     def setup_selenium(self):
         """Setup Selenium WebDriver with Chrome for cross-platform environment."""
@@ -292,11 +271,12 @@ class JobScraper:
                     
                     os.makedirs(cache_dir, exist_ok=True)
                     
-                    # Set WDM environment variables
+                    # Set WDM environment variables for latest version
                     os.environ['WDM_LOCAL'] = '1'
                     os.environ['WDM_LOG_LEVEL'] = '0'
                     os.environ['WDM_CACHE_DIR'] = cache_dir
                     
+                    # Use the latest WebDriverManager API (v5+)
                     driver_manager = ChromeDriverManager()
                     driver_path = driver_manager.install()
                     service = Service(driver_path)
@@ -357,85 +337,31 @@ class JobScraper:
             raise
     
     def scrape_jobs(self, url: str) -> List[JobPosting]:
-        """Scrape jobs from the given URL with robust fallback mechanisms."""
+        """Scrape jobs from the given URL using ONLY Selenium."""
         jobs = []
         
-        # Try Selenium first if enabled
-        if self.use_selenium:
-            try:
-                if not self.driver:
-                    self.setup_selenium()
-                jobs = self._scrape_with_selenium(url)
-                if jobs:
-                    self.logger.info(f"Successfully scraped {len(jobs)} jobs with Selenium")
-                    return jobs
-            except Exception as e:
-                self.logger.warning(f"Selenium scraping failed: {e}")
-                self.logger.info("Falling back to requests+BeautifulSoup mode")
-                # Don't re-raise, continue to fallback
+        # SELENIUM-ONLY MODE: No fallback to requests+BeautifulSoup
+        self.logger.info("SELENIUM-ONLY MODE: Using ONLY Selenium for scraping")
         
-        # Fallback to requests+BeautifulSoup
         try:
-            jobs = self._scrape_with_requests(url)
+            if not self.driver:
+                self.setup_selenium()
+            jobs = self._scrape_with_selenium(url)
             if jobs:
-                self.logger.info(f"Successfully scraped {len(jobs)} jobs with requests+BeautifulSoup")
+                self.logger.info(f"Successfully scraped {len(jobs)} jobs with Selenium")
+                return jobs
             else:
-                self.logger.info("No jobs found with either method")
-            return jobs
+                self.logger.info("No jobs found with Selenium - this is normal for some pages")
+                return []
         except Exception as e:
-            self.logger.error(f"All scraping methods failed for {url}: {e}")
-            return []
+            self.logger.error(f"Selenium scraping failed: {e}")
+            # No fallback - raise error to force Selenium troubleshooting
+            raise Exception(f"SELENIUM-ONLY MODE: Selenium failed and no fallback available: {e}")
     
     def _scrape_with_requests(self, url: str) -> List[JobPosting]:
-        """Scrape jobs using requests and BeautifulSoup with enhanced error handling."""
-        try:
-            self.logger.info(f"Attempting to scrape {url} with requests+BeautifulSoup")
-            
-            # Configure session with better headers and timeout
-            self.session.headers.update({
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Upgrade-Insecure-Requests': '1'
-            })
-            
-            response = self.session.get(url, timeout=30, allow_redirects=True)
-            response.raise_for_status()
-            
-            # Check if we got a valid response
-            if len(response.content) < 100:
-                self.logger.warning(f"Response too short ({len(response.content)} bytes), likely blocked")
-                return []
-            
-            self.logger.info(f"Successfully fetched page content ({len(response.content)} bytes)")
-            
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Enhanced parsing with multiple strategies for Amazon
-            jobs = self._parse_job_listings(soup, url)
-            
-            if not jobs:
-                # Try alternative parsing methods
-                self.logger.info("No jobs found with primary parsing, trying alternative methods")
-                jobs = self._parse_with_alternative_methods(soup, url)
-                
-                # If still no jobs, try to trigger dynamic content loading
-                if not jobs and 'amazon' in url.lower():
-                    self.logger.info("Trying enhanced Amazon-specific parsing")
-                    jobs = self._parse_amazon_specific(soup, url)
-            
-            return jobs
-            
-        except requests.exceptions.RequestException as e:
-            self.logger.error(f"Network error scraping with requests: {e}")
-            return []
-        except Exception as e:
-            self.logger.error(f"Failed to scrape with requests: {e}")
-            return []
+        """DISABLED: Requests method removed in SELENIUM-ONLY mode."""
+        self.logger.error("❌ SELENIUM-ONLY MODE: Requests+BeautifulSoup method disabled")
+        raise Exception("❌ SELENIUM-ONLY MODE: Requests+BeautifulSoup method disabled")
     
     def _scrape_with_selenium(self, url: str) -> List[JobPosting]:
         """Scrape jobs using Selenium for JavaScript-rendered content."""
@@ -452,22 +378,26 @@ class JobScraper:
                 self.cleanup()  # Clean up old driver
                 self.setup_selenium()  # Create new driver
             
+            self.logger.info(f"SELENIUM-ONLY: Navigating to {url}")
             self.driver.get(url)
             
             # Wait for job listings to load
-            wait = WebDriverWait(self.driver, 20)
+            wait = WebDriverWait(self.driver, 30)  # Increased timeout
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
-            # Give extra time for dynamic content
+            # Give extra time for dynamic content to load
+            self.logger.info("SELENIUM-ONLY: Waiting for dynamic content to load...")
+            time.sleep(5)
+            
+            # Additional wait to ensure all content is loaded
             time.sleep(3)
             
             soup = BeautifulSoup(self.driver.page_source, 'html.parser')
             return self._parse_job_listings(soup, url)
             
         except Exception as e:
-            self.logger.error(f"Failed to scrape with Selenium: {e}")
-            # Don't cleanup here as we want to retry with the same driver
-            return []
+            self.logger.error(f"SELENIUM-ONLY: Failed to scrape with Selenium: {e}")
+            raise
     
     def _parse_with_alternative_methods(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
         """Alternative parsing methods when primary parsing fails."""
@@ -878,20 +808,17 @@ class JobMonitor:
         self.config = self.load_config()
         self.setup_logging()
         
-        # Initialize scraper with enhanced fallback configuration
-        self.scraper = JobScraper(use_selenium=os.getenv('USE_SELENIUM', 'true').lower() == 'true')
+        # FORCE SELENIUM USAGE - Always initialize with Selenium
+        self.scraper = JobScraper(use_selenium=True)  # ALWAYS TRUE
         
-        # Enhanced fallback: Don't fail if Selenium setup fails
-        if self.scraper.use_selenium:
-            try:
-                self.scraper.setup_selenium()
-                self.logger.info("Selenium initialized successfully")
-            except Exception as e:
-                self.logger.warning(f"Selenium setup failed, disabling: {e}")
-                self.scraper.use_selenium = False
-                self.logger.info("Continuing with requests+BeautifulSoup mode")
-        else:
-            self.logger.info("Selenium disabled - using requests+BeautifulSoup mode")
+        # MANDATORY Selenium setup - no fallback allowed
+        try:
+            self.scraper.setup_selenium()
+            self.logger.info("✅ Selenium initialized successfully - SELENIUM-ONLY MODE")
+        except Exception as e:
+            self.logger.error(f"❌ CRITICAL: Selenium setup failed in SELENIUM-ONLY mode: {e}")
+            # In selenium-only mode, we must raise error instead of continuing
+            raise RuntimeError(f"SELENIUM-ONLY MODE: Cannot continue without Selenium: {e}")
         
         self.jobs: Dict[str, JobPosting] = {}
         self.logs = deque(maxlen=100)  # Keep last 100 log messages
@@ -918,7 +845,7 @@ class JobMonitor:
     def load_config(self) -> Dict:
         """Load configuration from environment variables with production defaults."""
         return {
-            'use_selenium': os.getenv('USE_SELENIUM', 'true').lower() == 'true',
+            'use_selenium': True,  # FORCED TRUE in SELENIUM-ONLY mode
             'poll_interval': int(os.getenv('POLL_INTERVAL', '30')),
             'log_level': os.getenv('LOG_LEVEL', 'INFO').upper(),
             'auto_start': os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true'
@@ -1072,8 +999,9 @@ class JobMonitor:
     
     def get_status(self) -> Dict:
         """Get current monitoring status."""
-        selenium_status = "On" if self.scraper.use_selenium else "Off"
-        selenium_driver_status = "Ready" if (self.scraper.use_selenium and self.scraper.driver) else "Not Initialized"
+        # In SELENIUM-ONLY mode, always show Selenium as enabled
+        selenium_status = "On"
+        selenium_driver_status = "Ready" if self.scraper.driver else "Initializing"
         
         return {
             'is_running': self.is_running,
@@ -1083,7 +1011,7 @@ class JobMonitor:
             'config': {
                 'poll_interval': self.poll_interval,
                 'target_urls': self.target_urls,
-                'use_selenium': self.scraper.use_selenium,
+                'use_selenium': True,  # ALWAYS TRUE in this version
                 'selenium_status': selenium_status,
                 'selenium_driver_status': selenium_driver_status
             }
@@ -1236,9 +1164,10 @@ async def update_config(request: ConfigUpdateRequest):
         if request.poll_interval:
             job_monitor.poll_interval = request.poll_interval
         if request.use_selenium is not None:
-            job_monitor.scraper.use_selenium = request.use_selenium
-            if request.use_selenium and not job_monitor.scraper.driver:
-                job_monitor.scraper.setup_selenium()
+            # In SELENIUM-ONLY mode, always keep Selenium enabled
+            if not request.use_selenium:
+                return {"message": "SELENIUM-ONLY MODE: Cannot disable Selenium", "status": "warning"}
+            # Selenium already enabled, no change needed
         
         return {"message": "Configuration updated", "status": "success"}
     except Exception as e:
@@ -1310,7 +1239,7 @@ if __name__ == "__main__":
     port = int(os.getenv('API_PORT', '8000'))
     host = os.getenv('API_HOST', '0.0.0.0')
     
-    job_monitor.logger.info(f"Starting API server on {host}:{port}")
+    job_monitor.logger.info(f"🚀 SELENIUM-ONLY MODE: Starting API server on {host}:{port}")
     
     # Auto-start monitoring after server starts
     if os.getenv('AUTO_START_MONITORING', 'true').lower() == 'true':

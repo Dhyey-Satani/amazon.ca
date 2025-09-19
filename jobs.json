@@ -16,5 +16,23 @@
     "posted_date": "2025-09-20",
     "description": "Real Amazon job posting: Warehouse Jobs",
     "detected_at": "2025-09-20T01:43:22.206603"
+  },
+  {
+    "job_id": "2e503dc8694f",
+    "title": "Job Search",
+    "url": "https://hiring.amazon.ca/app#/jobSearch",
+    "location": "Location TBD",
+    "posted_date": "2025-09-20",
+    "description": "Real Amazon job posting: Job Search",
+    "detected_at": "2025-09-20T02:13:48.019407"
+  },
+  {
+    "job_id": "72e19b9f3e30",
+    "title": "Warehouse Jobs",
+    "url": "https://hiring.amazon.ca/job-opportunities/warehouse-jobs#/",
+    "location": "Location TBD",
+    "posted_date": "2025-09-20",
+    "description": "Real Amazon job posting: Warehouse Jobs",
+    "detected_at": "2025-09-20T02:13:48.019451"
   }
 ]
