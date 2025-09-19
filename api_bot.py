@@ -85,13 +85,15 @@ class JobScraper:
         # Amazon requires JavaScript rendering for job listings
         selenium_env_setting = os.getenv('USE_SELENIUM', 'true').lower() == 'true'
         
+        # Initialize logger first before using it
+        self.logger = logging.getLogger('scraper')
+        
         if use_selenium and selenium_env_setting:
             self.logger.info("Selenium enabled for Amazon job scraping (JavaScript required)")
             self.use_selenium = True
         else:
             self.logger.info("Selenium disabled - using enhanced requests mode")
             self.use_selenium = False
-        self.logger = logging.getLogger('scraper')
         self.driver = None
         
         # Setup session with connection pooling
