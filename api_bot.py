@@ -500,19 +500,11 @@ class JobScraper:
                 )
                 jobs.append(job)
             
-            # Method 3: Create sample job based on known Amazon hiring patterns
+            # Method 3: Strict mode - no fake data generation
             if not jobs:
-                self.logger.info("Creating sample Amazon job posting as fallback")
-                
-                sample_job = JobPosting(
-                    job_id=hashlib.md5(f"{base_url}_{datetime.now()}".encode()).hexdigest()[:12],
-                    title="Amazon Warehouse Associate - Multiple Locations",
-                    url=base_url,
-                    location="Various Locations, Canada",
-                    posted_date=datetime.now().strftime("%Y-%m-%d"),
-                    description="Amazon is hiring warehouse associates across Canada. Visit the careers page for current openings."
-                )
-                jobs.append(sample_job)
+                self.logger.info("No real job postings found - maintaining data integrity")
+                # Return empty list to maintain data integrity
+                return []
             
             self.logger.info(f"Amazon-specific parsing found {len(jobs)} job opportunities")
             return jobs
@@ -1140,6 +1132,46 @@ async def clear_jobs():
         job_monitor.stats['total_jobs_found'] = 0
         job_monitor.stats['new_jobs_this_session'] = 0
         return {"message": "All jobs cleared", "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/jobs/fake")
+async def clear_fake_jobs():
+    """Clear fake jobs while keeping real ones."""
+    try:
+        fake_job_indicators = [
+            "Amazon Warehouse Associate - Multiple Locations",
+            "Various Locations, Canada",
+            "Real Amazon job posting:",
+            "Amazon is hiring warehouse associates across Canada"
+        ]
+        
+        original_count = len(job_monitor.jobs)
+        fake_jobs_removed = 0
+        
+        # Filter out fake jobs
+        real_jobs = {}
+        for job_id, job in job_monitor.jobs.items():
+            is_fake = any(indicator in job.title or 
+                         indicator in job.description or 
+                         indicator in job.location 
+                         for indicator in fake_job_indicators)
+            
+            if not is_fake:
+                real_jobs[job_id] = job
+            else:
+                fake_jobs_removed += 1
+        
+        job_monitor.jobs = real_jobs
+        job_monitor._save_jobs()
+        job_monitor.stats['total_jobs_found'] = len(real_jobs)
+        
+        return {
+            "message": f"Removed {fake_jobs_removed} fake jobs. {len(real_jobs)} real jobs retained.",
+            "status": "success",
+            "removed": fake_jobs_removed,
+            "remaining": len(real_jobs)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
