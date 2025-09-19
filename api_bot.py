@@ -66,33 +66,73 @@ class JobScraper:
     """Handles job scraping from target websites."""
     
     def __init__(self, use_selenium: bool = True):
-        # Set environment variables to fix cache permission issues early
-        os.environ['HOME'] = '/app'
-        os.environ['XDG_CACHE_HOME'] = '/app/.cache'
-        os.environ['WDM_CACHE_DIR'] = '/app/.wdm'
-        os.environ['SE_CACHE_PATH'] = '/app/.cache/selenium'
+        # Initialize logger first before using it
+        self.logger = logging.getLogger('scraper')
+        
+        # Detect operating system and set appropriate paths
+        import platform
+        is_windows = platform.system() == 'Windows'
+        is_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER', 'false').lower() == 'true'
+        
+        if is_docker:
+            # Docker/Cloud deployment paths
+            os.environ['HOME'] = '/app'
+            os.environ['XDG_CACHE_HOME'] = '/app/.cache'
+            os.environ['WDM_CACHE_DIR'] = '/app/.wdm'
+            os.environ['SE_CACHE_PATH'] = '/app/.cache/selenium'
+            cache_dirs = ['/app/.cache', '/app/.wdm', '/app/.cache/selenium', '/app/.chrome_user_data']
+        elif is_windows:
+            # Windows-specific paths
+            base_dir = os.path.expanduser('~')
+            cache_base = os.path.join(base_dir, '.cache')
+            cache_dirs = [
+                os.path.join(cache_base, 'selenium'),
+                os.path.join(cache_base, 'webdriver'),
+                os.path.join(base_dir, '.wdm'),
+                os.path.join(base_dir, '.chrome_user_data')
+            ]
+            
+            # Set environment variables for Windows
+            os.environ['WDM_CACHE_DIR'] = os.path.join(base_dir, '.wdm')
+            os.environ['SE_CACHE_PATH'] = os.path.join(cache_base, 'selenium')
+        else:
+            # Linux paths (for non-Docker Linux systems)
+            base_dir = os.path.expanduser('~')
+            cache_dirs = [
+                os.path.join(base_dir, '.cache', 'selenium'),
+                os.path.join(base_dir, '.wdm'),
+                os.path.join(base_dir, '.chrome_user_data')
+            ]
+            os.environ['WDM_CACHE_DIR'] = os.path.join(base_dir, '.wdm')
+            os.environ['SE_CACHE_PATH'] = os.path.join(base_dir, '.cache', 'selenium')
         
         # Create cache directories with proper permissions
-        for cache_dir in ['/app/.cache', '/app/.wdm', '/app/.cache/selenium', '/app/.chrome_user_data']:
+        selenium_cache_ok = True
+        for cache_dir in cache_dirs:
             try:
                 os.makedirs(cache_dir, exist_ok=True)
-            except PermissionError:
-                # If we can't create cache dirs, disable Selenium
-                use_selenium = False
-                break
+                self.logger.info(f"Created cache directory: {cache_dir}")
+            except (PermissionError, OSError) as e:
+                self.logger.warning(f"Failed to create cache directory {cache_dir}: {e}")
+                if is_docker:  # Only disable on Docker if cache creation fails
+                    selenium_cache_ok = False
+                    break
         
         # For Amazon job scraping, we need to respect the USE_SELENIUM setting
         # Amazon requires JavaScript rendering for job listings
         selenium_env_setting = os.getenv('USE_SELENIUM', 'true').lower() == 'true'
         
-        # Initialize logger first before using it
-        self.logger = logging.getLogger('scraper')
-        
-        if use_selenium and selenium_env_setting:
-            self.logger.info("Selenium enabled for Amazon job scraping (JavaScript required)")
+        # Determine if we should use Selenium based on environment and system capabilities
+        if use_selenium and selenium_env_setting and selenium_cache_ok:
+            self.logger.info(f"Selenium enabled for Amazon job scraping on {platform.system()} (JavaScript required)")
             self.use_selenium = True
         else:
-            self.logger.info("Selenium disabled - using enhanced requests mode")
+            if not selenium_env_setting:
+                self.logger.info("Selenium disabled by USE_SELENIUM environment variable")
+            elif not selenium_cache_ok:
+                self.logger.warning("Selenium disabled due to cache directory creation failure")
+            else:
+                self.logger.info("Selenium disabled - using enhanced requests mode")
             self.use_selenium = False
         self.driver = None
         
@@ -118,43 +158,115 @@ class JobScraper:
         self.session.headers.update(self.headers)
     
     def setup_selenium(self):
-        """Setup Selenium WebDriver with Chrome for production environment."""
+        """Setup Selenium WebDriver with Chrome for cross-platform environment."""
         if self.driver:
             return
         
         try:
+            import platform
+            is_windows = platform.system() == 'Windows'
+            is_docker = os.path.exists('/.dockerenv') or os.getenv('DOCKER', 'false').lower() == 'true'
+            
             chrome_options = Options()
-            # Production-optimized Chrome options
-            chrome_options.add_argument('--headless')
-            chrome_options.add_argument('--no-sandbox')
-            chrome_options.add_argument('--disable-dev-shm-usage')
-            chrome_options.add_argument('--disable-gpu')
-            chrome_options.add_argument('--disable-extensions')
-            chrome_options.add_argument('--disable-background-timer-throttling')
-            chrome_options.add_argument('--disable-backgrounding-occluded-windows')
-            chrome_options.add_argument('--disable-renderer-backgrounding')
-            chrome_options.add_argument('--window-size=1920,1080')
-            chrome_options.add_argument(f'--user-agent={self.headers["User-Agent"]}')
-            chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-            chrome_options.add_argument('--disable-web-security')
-            chrome_options.add_argument('--allow-running-insecure-content')
-            chrome_options.add_argument('--disable-features=TranslateUI')
-            chrome_options.add_argument('--disable-ipc-flooding-protection')
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
             
-            # Set user data directory to writable location
-            user_data_dir = os.path.join('/app', '.chrome_user_data')
-            os.makedirs(user_data_dir, exist_ok=True)
-            chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
+            if is_docker:
+                # Docker/Cloud environment Chrome options
+                chrome_options.add_argument('--headless')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--disable-extensions')
+                chrome_options.add_argument('--disable-background-timer-throttling')
+                chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+                chrome_options.add_argument('--disable-renderer-backgrounding')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument(f'--user-agent={self.headers["User-Agent"]}')
+                chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+                chrome_options.add_argument('--disable-web-security')
+                chrome_options.add_argument('--allow-running-insecure-content')
+                chrome_options.add_argument('--disable-features=TranslateUI')
+                chrome_options.add_argument('--disable-ipc-flooding-protection')
+                chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                chrome_options.add_experimental_option('useAutomationExtension', False)
+                
+                # Set user data directory to writable location
+                user_data_dir = os.path.join('/app', '.chrome_user_data')
+                os.makedirs(user_data_dir, exist_ok=True)
+                chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
+                
+                self.logger.info("Configuring Chrome for Docker/Cloud environment")
+            elif is_windows:
+                # Windows-specific Chrome options
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--disable-extensions')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument(f'--user-agent={self.headers["User-Agent"]}')
+                chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+                chrome_options.add_argument('--disable-web-security')
+                chrome_options.add_argument('--allow-running-insecure-content')
+                chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                chrome_options.add_experimental_option('useAutomationExtension', False)
+                
+                # Set user data directory to user's home on Windows
+                import uuid
+                unique_id = str(uuid.uuid4())[:8]
+                user_data_dir = os.path.join(os.path.expanduser('~'), f'.chrome_user_data_{unique_id}')
+                os.makedirs(user_data_dir, exist_ok=True)
+                chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
+                
+                self.logger.info("Configuring Chrome for Windows environment")
+            else:
+                # Production-optimized Chrome options for Linux/Docker
+                chrome_options.add_argument('--headless')
+                chrome_options.add_argument('--no-sandbox')
+                chrome_options.add_argument('--disable-dev-shm-usage')
+                chrome_options.add_argument('--disable-gpu')
+                chrome_options.add_argument('--disable-extensions')
+                chrome_options.add_argument('--disable-background-timer-throttling')
+                chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+                chrome_options.add_argument('--disable-renderer-backgrounding')
+                chrome_options.add_argument('--window-size=1920,1080')
+                chrome_options.add_argument(f'--user-agent={self.headers["User-Agent"]}')
+                chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+                chrome_options.add_argument('--disable-web-security')
+                chrome_options.add_argument('--allow-running-insecure-content')
+                chrome_options.add_argument('--disable-features=TranslateUI')
+                chrome_options.add_argument('--disable-ipc-flooding-protection')
+                chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                chrome_options.add_experimental_option('useAutomationExtension', False)
+                
+                # Set user data directory to writable location
+                user_data_dir = os.path.join('/app', '.chrome_user_data')
+                os.makedirs(user_data_dir, exist_ok=True)
+                chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
             
-            # Try different Chrome binary locations
-            chrome_binary_paths = [
-                '/usr/bin/google-chrome',
-                '/usr/bin/google-chrome-stable',
-                '/usr/bin/chromium-browser',
-                '/usr/bin/chromium'
-            ]
+            # Try different Chrome binary locations based on OS
+            driver_created = False
+            
+            if is_docker:
+                # Docker/Cloud Chrome detection
+                chrome_binary_paths = [
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/google-chrome-stable',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/chromium'
+                ]
+            elif is_windows:
+                # Windows Chrome detection
+                chrome_binary_paths = [
+                    r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                    r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe',
+                    os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe')
+                ]
+            else:
+                # Linux Chrome paths
+                chrome_binary_paths = [
+                    '/usr/bin/google-chrome',
+                    '/usr/bin/google-chrome-stable',
+                    '/usr/bin/chromium-browser',
+                    '/usr/bin/chromium'
+                ]
             
             for chrome_path in chrome_binary_paths:
                 if os.path.exists(chrome_path):
@@ -163,60 +275,29 @@ class JobScraper:
                     break
             
             # Try to create the driver with multiple fallback approaches
-            driver_created = False
-            
-            # Method 1: Try with system chromedriver
-            try:
-                from selenium.webdriver.chrome.service import Service
-                
-                chromedriver_paths = [
-                    '/usr/bin/chromedriver',
-                    '/usr/local/bin/chromedriver',
-                    '/opt/chromedriver/chromedriver'
-                ]
-                
-                for driver_path in chromedriver_paths:
-                    if os.path.exists(driver_path):
-                        service = Service(driver_path)
-                        self.driver = webdriver.Chrome(service=service, options=chrome_options)
-                        driver_created = True
-                        self.logger.info(f"Chrome driver initialized with: {driver_path}")
-                        break
-                
-                if not driver_created:
-                    # Fallback: Try without explicit service
-                    self.driver = webdriver.Chrome(options=chrome_options)
-                    driver_created = True
-                    self.logger.info("Chrome driver initialized with default service")
-                    
-            except Exception as e:
-                self.logger.warning(f"Failed to initialize with system driver: {e}")
-            
-            # Method 2: Try with WebDriverManager (auto-download)
+            # Method 1: Try with WebDriverManager (auto-download) - Works best on Windows
             if not driver_created:
                 try:
                     self.logger.info("Trying with ChromeDriverManager (auto-download)...")
                     from selenium.webdriver.chrome.service import Service
                     from webdriver_manager.chrome import ChromeDriverManager
                     
-                    # Set cache directory to writable location within /app
-                    cache_dir = os.path.join('/app', '.wdm')
+                    # Set cache directory based on OS
+                    if is_docker:
+                        cache_dir = os.path.join('/app', '.wdm')
+                    elif is_windows:
+                        cache_dir = os.path.join(os.path.expanduser('~'), '.wdm')
+                    else:
+                        cache_dir = os.path.join(os.path.expanduser('~'), '.wdm')
+                    
                     os.makedirs(cache_dir, exist_ok=True)
                     
-                    # Set WDM environment variables to use our writable directory
+                    # Set WDM environment variables
                     os.environ['WDM_LOCAL'] = '1'
                     os.environ['WDM_LOG_LEVEL'] = '0'
                     os.environ['WDM_CACHE_DIR'] = cache_dir
                     
-                    # Also set selenium cache directory
-                    selenium_cache_dir = os.path.join('/app', '.cache', 'selenium')
-                    os.makedirs(selenium_cache_dir, exist_ok=True)
-                    os.environ['SE_CACHE_PATH'] = selenium_cache_dir
-                    
-                    driver_manager = ChromeDriverManager(
-                        cache_valid_range=7,
-                        path=cache_dir
-                    )
+                    driver_manager = ChromeDriverManager()
                     driver_path = driver_manager.install()
                     service = Service(driver_path)
                     self.driver = webdriver.Chrome(service=service, options=chrome_options)
@@ -224,7 +305,38 @@ class JobScraper:
                     self.logger.info("Chrome driver initialized with WebDriverManager")
                     
                 except Exception as e:
-                    self.logger.error(f"WebDriverManager failed: {e}")
+                    self.logger.warning(f"WebDriverManager failed: {e}")
+            
+            if not driver_created:
+                raise Exception("All Chrome driver initialization methods failed")
+            
+            # Method 2: Try with system chromedriver (mainly for Linux/Docker)
+            if not driver_created and (not is_windows or is_docker):
+                try:
+                    from selenium.webdriver.chrome.service import Service
+                    
+                    chromedriver_paths = [
+                        '/usr/bin/chromedriver',
+                        '/usr/local/bin/chromedriver',
+                        '/opt/chromedriver/chromedriver'
+                    ]
+                    
+                    for driver_path in chromedriver_paths:
+                        if os.path.exists(driver_path):
+                            service = Service(driver_path)
+                            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                            driver_created = True
+                            self.logger.info(f"Chrome driver initialized with: {driver_path}")
+                            break
+                    
+                    if not driver_created:
+                        # Fallback: Try without explicit service
+                        self.driver = webdriver.Chrome(options=chrome_options)
+                        driver_created = True
+                        self.logger.info("Chrome driver initialized with default service")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Failed to initialize with system driver: {e}")
             
             if not driver_created:
                 raise Exception("All Chrome driver initialization methods failed")
@@ -328,6 +440,18 @@ class JobScraper:
     def _scrape_with_selenium(self, url: str) -> List[JobPosting]:
         """Scrape jobs using Selenium for JavaScript-rendered content."""
         try:
+            # Ensure driver is available and valid
+            if not self.driver:
+                self.setup_selenium()
+            
+            # Test if driver session is still valid
+            try:
+                self.driver.current_url  # This will throw if session is invalid
+            except Exception:
+                self.logger.warning("Selenium session invalid, reinitializing...")
+                self.cleanup()  # Clean up old driver
+                self.setup_selenium()  # Create new driver
+            
             self.driver.get(url)
             
             # Wait for job listings to load
@@ -342,6 +466,7 @@ class JobScraper:
             
         except Exception as e:
             self.logger.error(f"Failed to scrape with Selenium: {e}")
+            # Don't cleanup here as we want to retry with the same driver
             return []
     
     def _parse_with_alternative_methods(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
@@ -947,6 +1072,9 @@ class JobMonitor:
     
     def get_status(self) -> Dict:
         """Get current monitoring status."""
+        selenium_status = "On" if self.scraper.use_selenium else "Off"
+        selenium_driver_status = "Ready" if (self.scraper.use_selenium and self.scraper.driver) else "Not Initialized"
+        
         return {
             'is_running': self.is_running,
             'last_check': self.last_check.isoformat() if self.last_check else None,
@@ -955,7 +1083,9 @@ class JobMonitor:
             'config': {
                 'poll_interval': self.poll_interval,
                 'target_urls': self.target_urls,
-                'use_selenium': self.scraper.use_selenium
+                'use_selenium': self.scraper.use_selenium,
+                'selenium_status': selenium_status,
+                'selenium_driver_status': selenium_driver_status
             }
         }
     

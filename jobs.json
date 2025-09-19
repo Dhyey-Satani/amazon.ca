@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "job_id": "f2bfdca228c1",
+    "title": "Job Search",
+    "url": "https://hiring.amazon.ca/app#/jobsearch/app#/jobSearch",
+    "location": "Location TBD",
+    "posted_date": "2025-09-20",
+    "description": "Real Amazon job posting: Job Search",
+    "detected_at": "2025-09-20T01:43:22.206546"
+  },
+  {
+    "job_id": "00d060ccb18c",
+    "title": "Warehouse Jobs",
+    "url": "https://hiring.amazon.ca/app#/jobsearch/job-opportunities/warehouse-jobs#/",
+    "location": "Location TBD",
+    "posted_date": "2025-09-20",
+    "description": "Real Amazon job posting: Warehouse Jobs",
+    "detected_at": "2025-09-20T01:43:22.206603"
+  }
+]
