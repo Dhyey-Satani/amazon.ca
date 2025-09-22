@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["geckodriver", "libxcrypt", "xcodebuild", "zlib"]
+packages = ["geckodriver", "libxcrypt", "xcodebuild", "zlib", "chromium"]
 
 [workflows]
 runButton = "Project"
@@ -16,15 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "FastAPI Server"
+args = "Live Data API"
 
 [[workflows.workflow]]
-name = "FastAPI Server"
+name = "Live Data API"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python api_simple.py"
+args = "python api_live.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -33,10 +33,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 38683
-externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
