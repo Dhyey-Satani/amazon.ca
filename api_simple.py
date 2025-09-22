@@ -276,7 +276,7 @@ async def get_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/start")
-async def start_monitoring(request: StartMonitorRequest = None):
+async def start_monitoring(request: Optional[StartMonitorRequest] = None):
     """Trigger a job check (since continuous monitoring isn't possible in serverless)."""
     try:
         new_jobs = job_monitor.check_for_jobs()
@@ -308,4 +308,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=5000)
