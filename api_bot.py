@@ -26,13 +26,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
 import os
+from collections import defaultdict
+from threading import Lock
 
 # Load environment variables
 load_dotenv()
@@ -837,6 +839,13 @@ class JobMonitor:
         ]
         self.poll_interval = int(os.getenv('POLL_INTERVAL', '30'))
         
+        # Add caching for frequent API calls
+        self._status_cache = None
+        self._status_cache_time = 0
+        self._jobs_cache = None
+        self._jobs_cache_time = 0
+        self._cache_ttl = 5  # Cache for 5 seconds to reduce load
+        
         # Load existing jobs from file
         self._load_jobs()
         
@@ -905,11 +914,15 @@ class JobMonitor:
             self.logger.error(f"Failed to load jobs: {e}")
     
     def _save_jobs(self):
-        """Save jobs to JSON file."""
+        """Save jobs to JSON file and invalidate cache."""
         try:
             with open('jobs.json', 'w') as f:
                 jobs_data = [asdict(job) for job in self.jobs.values()]
                 json.dump(jobs_data, f, indent=2, default=str)
+            
+            # Invalidate caches when jobs are updated
+            self._jobs_cache = None
+            self._status_cache = None
         except Exception as e:
             self.logger.error(f"Failed to save jobs: {e}")
     
@@ -991,19 +1004,36 @@ class JobMonitor:
             self.add_log('INFO', '✅ Check completed. No fake data generated - only real job postings are returned.')
     
     def get_jobs(self, limit: int = 50) -> List[Dict]:
-        """Get list of jobs."""
+        """Get list of jobs with caching."""
+        now = time.time()
+        
+        # Return cached jobs if still valid
+        if self._jobs_cache and (now - self._jobs_cache_time) < self._cache_ttl:
+            return self._jobs_cache[:limit]
+        
         jobs_list = list(self.jobs.values())
         # Sort by detected_at descending (newest first)
         jobs_list.sort(key=lambda x: x.detected_at, reverse=True)
-        return [asdict(job) for job in jobs_list[:limit]]
+        
+        # Cache the jobs
+        self._jobs_cache = [asdict(job) for job in jobs_list]
+        self._jobs_cache_time = now
+        
+        return self._jobs_cache[:limit]
     
     def get_status(self) -> Dict:
-        """Get current monitoring status."""
+        """Get current monitoring status with caching."""
+        now = time.time()
+        
+        # Return cached status if still valid
+        if self._status_cache and (now - self._status_cache_time) < self._cache_ttl:
+            return self._status_cache
+        
         # In SELENIUM-ONLY mode, always show Selenium as enabled
         selenium_status = "On"
         selenium_driver_status = "Ready" if self.scraper.driver else "Initializing"
         
-        return {
+        status = {
             'is_running': self.is_running,
             'last_check': self.last_check.isoformat() if self.last_check else None,
             'total_jobs': len(self.jobs),
@@ -1016,6 +1046,12 @@ class JobMonitor:
                 'selenium_driver_status': selenium_driver_status
             }
         }
+        
+        # Cache the status
+        self._status_cache = status
+        self._status_cache_time = now
+        
+        return status
     
     def get_logs(self, limit: int = 50) -> List[Dict]:
         """Get recent logs."""
@@ -1055,6 +1091,33 @@ except Exception as e:
     
     job_monitor = FallbackJobMonitor()
 
+# Rate limiting to prevent excessive API calls
+class RateLimiter:
+    def __init__(self):
+        self.clients = defaultdict(lambda: {"requests": 0, "last_reset": time.time()})
+        self.lock = Lock()
+        self.requests_per_minute = 60  # Allow 60 requests per minute per IP
+        self.window_size = 60  # 1 minute window
+    
+    def is_allowed(self, client_ip: str) -> bool:
+        with self.lock:
+            now = time.time()
+            client_data = self.clients[client_ip]
+            
+            # Reset counter if window has passed
+            if now - client_data["last_reset"] >= self.window_size:
+                client_data["requests"] = 0
+                client_data["last_reset"] = now
+            
+            # Check if within limits
+            if client_data["requests"] < self.requests_per_minute:
+                client_data["requests"] += 1
+                return True
+            return False
+
+# Initialize rate limiter
+rate_limiter = RateLimiter()
+
 # Cleanup on shutdown
 from contextlib import asynccontextmanager
 
@@ -1073,7 +1136,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS middleware
+# CORS middleware with rate limiting considerations
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # In production, specify your frontend URL
@@ -1081,6 +1144,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting middleware
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # Skip rate limiting for health checks from known cloud platforms
+    if any(path in request.url.path for path in ["/health", "/"]) and "health" in request.headers.get("user-agent", "").lower():
+        response = await call_next(request)
+        return response
+    
+    # Apply rate limiting to API endpoints
+    if request.url.path in ["/status", "/jobs", "/logs"]:
+        if not rate_limiter.is_allowed(client_ip):
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Please slow down your polling rate."}
+            )
+    
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(rate_limiter.requests_per_minute)
+    return response
 
 # Pydantic models for requests
 class StartMonitorRequest(BaseModel):
@@ -1102,7 +1187,10 @@ async def get_jobs(limit: int = 50):
     """Get list of detected jobs."""
     try:
         jobs = job_monitor.get_jobs(limit)
-        return {"jobs": jobs, "total": len(job_monitor.jobs)}
+        response = JSONResponse({"jobs": jobs, "total": len(job_monitor.jobs)})
+        response.headers["Cache-Control"] = "public, max-age=5"
+        response.headers["X-Recommended-Poll-Interval"] = "60"  # Suggest 60 second polling for jobs
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1110,7 +1198,11 @@ async def get_jobs(limit: int = 50):
 async def get_status():
     """Get current monitoring status."""
     try:
-        return job_monitor.get_status()
+        status = job_monitor.get_status()
+        response = JSONResponse(status)
+        response.headers["Cache-Control"] = "public, max-age=5"
+        response.headers["X-Recommended-Poll-Interval"] = "30"  # Suggest 30 second polling
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1151,7 +1243,10 @@ async def get_logs(limit: int = 50):
     """Get recent log messages."""
     try:
         logs = job_monitor.get_logs(limit)
-        return {"logs": logs}
+        response = JSONResponse({"logs": logs})
+        response.headers["Cache-Control"] = "public, max-age=10"
+        response.headers["X-Recommended-Poll-Interval"] = "30"  # Suggest 30 second polling for logs
+        return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
