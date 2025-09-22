@@ -1182,6 +1182,11 @@ async def root():
     """Root endpoint."""
     return {"message": "Amazon Job Monitor API", "version": "1.0.0"}
 
+@app.get("/health")
+async def health_check():
+    """Lightweight health check for cloud platforms."""
+    return {"status": "healthy", "service": "amazon-job-monitor"}
+
 @app.get("/jobs")
 async def get_jobs(limit: int = 50):
     """Get list of detected jobs."""
