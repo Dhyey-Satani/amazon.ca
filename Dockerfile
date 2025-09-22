@@ -105,4 +105,4 @@ ENV USE_SELENIUM=true \
 EXPOSE 8000
 
 # Start the API bot
-CMD ["python", "api_bot.py"]
+CMD ["python", "api_live.py"]
