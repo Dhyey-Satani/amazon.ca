@@ -456,4 +456,9 @@ async def health_check():
 if __name__ == "__main__":
     logger.info("🚀 Starting Selenium-Only Amazon Job Monitor API")
     logger.info("🎯 Target Site: https://hiring.amazon.ca/app#/jobsearch")
-    uvicorn.run(app, host="0.0.0.0", port=5001)
+    
+    # Use PORT environment variable for cloud deployment compatibility
+    port = int(os.getenv('PORT', 8000))
+    logger.info(f"🌐 Starting server on port: {port}")
+    
+    uvicorn.run(app, host="0.0.0.0", port=port)
