@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "main.py",
+      "use": "@vercel/python",
+      "config": {
+        "requirementsTxt": "requirements-vercel.txt"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "main.py"
+    }
+  ],
+  "env": {
+    "PYTHONPATH": ".",
+    "USE_SELENIUM": "false",
+    "VERCEL": "1"
+  },
+  "functions": {
+    "main.py": {
+      "maxDuration": 30
+    }
+  }
+}

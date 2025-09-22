@@ -1,11 +1,51 @@
+node_modules
+npm-debug.log*
+.npm
+.git
+.gitignore
+*.md
+logs
+data
+__pycache__
+>>>>>>> main
+*.pyc
+*.pyo
+*.pyd
+.Python
+<<<<<<< HEAD
+*.so
+.coverage
+.pytest_cache/
+.env
+.DS_Store
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+*~
+# Keep nginx, supervisor config files and entrypoint
+!nginx-default.conf
+!supervisord.conf
+!entrypoint.sh
+>>>>>>> main
 # Docker ignore file - exclude unnecessary files from build context
 .git
 .gitignore
-README.md
-RENDER_DEPLOYMENT.md
 *.md
-jobs.json
 logs/
+data/
 __pycache__/
 *.pyc
 *.pyo
@@ -16,3 +56,70 @@ __pycache__/
 .pytest_cache/
 .env
 .DS_Store
+node_modules
+npm-debug.log*
+.npm
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.vscode
+.idea
+*.swp
+*.swo
+*~
+jobs.json
+# Keep essential config files
+!nginx-default.conf
+!supervisord.conf
+!entrypoint.sh
+=======
+node_modules
+npm-debug.log*
+.npm
+.git
+.gitignore
+*.md
+logs
+data
+__pycache__
+>>>>>>> main
+*.pyc
+*.pyo
+*.pyd
+.Python
+<<<<<<< HEAD
+*.so
+.coverage
+.pytest_cache/
+.env
+.DS_Store
+=======
+env
+pip-log.txt
+pip-delete-this-directory.txt
+.tox
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+*~
+# Keep nginx, supervisor config files and entrypoint
+!nginx-default.conf
+!supervisord.conf
+!entrypoint.sh
+>>>>>>> main
