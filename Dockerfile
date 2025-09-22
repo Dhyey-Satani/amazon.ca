@@ -76,7 +76,7 @@ COPY .env.example .
 # Create necessary directories and set permissions
 RUN mkdir -p logs data /var/log/supervisor && \
     chown -R botuser:botuser /app && \
-    chmod +x /app/api_bot.py && \
+    chmod +x /app/api_live.py && \
     chmod +x /app/health_check.py && \
     chmod +x /app/diagnose_502.py && \
     # Ensure logs directory is writable by botuser
