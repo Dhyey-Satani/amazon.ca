@@ -32,3 +32,15 @@ pytest>=7.4.0
 pytest-cov>=4.1.0
 black>=23.0.0
 flake8>=6.0.0
+beautifulsoup4
+colorlog
+dateparser
+fastapi
+html5lib
+lxml
+pydantic
+python-dotenv
+requests
+selenium
+uvicorn
+webdriver-manager
