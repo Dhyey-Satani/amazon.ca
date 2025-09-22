@@ -67,7 +67,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY api_bot.py .
+COPY api_live.py .
 COPY health_check.py .
 COPY test_api_startup.py .
 COPY diagnose_502.py .
