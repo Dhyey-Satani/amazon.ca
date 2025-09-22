@@ -1,0 +1,22 @@
+# Lightweight requirements for free deployment platforms
+# Optimized for Replit, Glitch, and other free hosting
+
+# Core FastAPI dependencies (lightweight)
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Web scraping (essential)
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Selenium (for platforms that support it)
+selenium==4.15.0
+webdriver-manager==4.0.1
+
+# Utilities
+python-dotenv==1.0.0
+
+# Optional: Only install if needed
+# win10toast>=0.9;sys_platform=="win32"
