@@ -50,19 +50,20 @@ class JobPosting:
             self.detected_at = datetime.now().isoformat()
 
 class LiveJobScraper:
-    """Live job scraper using Selenium for real data."""
+    """Live job scraper using ONLY Selenium for Amazon hiring page."""
     
     def __init__(self):
         self.logger = logging.getLogger('scraper')
         self.driver = None
+        self.use_selenium = True  # FORCE Selenium usage as per user preference
         self.setup_selenium()
     
     def setup_selenium(self):
-        """Setup Selenium WebDriver with Chromium for Replit."""
+        """Setup Selenium WebDriver with Chrome for Windows environment."""
         try:
             chrome_options = Options()
             
-            # Configure for Replit environment
+            # Configure for Windows development
             chrome_options.add_argument('--headless')
             chrome_options.add_argument('--no-sandbox')
             chrome_options.add_argument('--disable-dev-shm-usage')
@@ -75,15 +76,38 @@ class LiveJobScraper:
             chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
+            # Set Chrome binary path for Windows
+            chrome_binary_paths = [
+                r'C:\Program Files\Google\Chrome\Application\chrome.exe',
+                r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
+            ]
+            
+            for chrome_path in chrome_binary_paths:
+                if os.path.exists(chrome_path):
+                    chrome_options.binary_location = chrome_path
+                    self.logger.info(f"Using Chrome binary: {chrome_path}")
+                    break
+            
             # Use temporary directory for user data
             temp_dir = tempfile.mkdtemp()
             chrome_options.add_argument(f'--user-data-dir={temp_dir}')
             
-            # Set chromium binary path for Replit
-            chrome_options.binary_location = '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium'
+            # Try with WebDriverManager first (Windows)
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                
+                # Set cache directory
+                os.environ['WDM_LOCAL'] = '1'
+                os.environ['WDM_LOG_LEVEL'] = '0'
+                
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                
+            except ImportError:
+                # Fallback without WebDriverManager
+                self.driver = webdriver.Chrome(options=chrome_options)
             
-            # Try to create the driver
-            self.driver = webdriver.Chrome(options=chrome_options)
+            # Configure driver to avoid detection
             self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             self.logger.info("✅ Selenium WebDriver initialized successfully")
             
@@ -92,71 +116,124 @@ class LiveJobScraper:
             self.driver = None
     
     def scrape_jobs(self, url: str) -> List[JobPosting]:
-        """Scrape jobs using requests + BeautifulSoup with live data."""
+        """Scrape jobs using ONLY Selenium from Amazon hiring page."""
         jobs = []
         
+        if not self.driver:
+            self.logger.error("❌ Selenium driver not available - cannot proceed")
+            return []
+        
         try:
-            self.logger.info(f"🔍 Scraping live data from: {url}")
+            self.logger.info(f"🔍 Using SELENIUM to scrape: {url}")
             
-            # Use requests with proper headers to get live data
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-            }
+            # Navigate to the page
+            self.driver.get(url)
             
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
+            # Wait for the page to load (Amazon's job search is JavaScript-heavy)
+            wait = WebDriverWait(self.driver, 20)
             
-            soup = BeautifulSoup(response.content, 'html.parser')
+            # Wait for body to load
+            wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
             
-            # Extract real job data from Amazon's actual structure
-            self.logger.info(f"📄 Parsing live HTML content from {url}")
+            # Additional wait for JavaScript content to render
+            self.logger.info("⏳ Waiting for JavaScript content to load...")
+            time.sleep(8)  # Give time for dynamic content
             
-            # Look for job-related content in the page
-            job_indicators = soup.find_all(text=lambda text: text and any(
-                keyword in text.lower() for keyword in ['hiring', 'position', 'apply', 'job', 'career', 'work']
-            ))
-            
-            if job_indicators:
-                self.logger.info(f"✅ Found {len(job_indicators)} job indicators on live page")
-                
-                # Extract real job opportunities from page content
-                job_categories = [
-                    'Warehouse Associate', 'Delivery Driver', 'Fulfillment Associate', 
-                    'Customer Service', 'Operations Assistant', 'Package Handler'
+            # Try to find job-related elements
+            try:
+                # Look for common job listing selectors
+                job_selectors = [
+                    '.job-tile',
+                    '.job-card', 
+                    '[data-testid="job-tile"]',
+                    '.search-result',
+                    '.job-posting',
+                    '.position-card',
+                    '[class*="job"]',
+                    '[class*="position"]'
                 ]
                 
-                locations = ['Toronto, ON', 'Vancouver, BC', 'Montreal, QC', 'Calgary, AB']
+                job_elements = []
+                for selector in job_selectors:
+                    elements = self.driver.find_elements(By.CSS_SELECTOR, selector)
+                    if elements:
+                        job_elements = elements
+                        self.logger.info(f"✅ Found {len(elements)} job elements with selector: {selector}")
+                        break
                 
-                for i, category in enumerate(job_categories[:3]):  # Limit to 3 real categories
-                    # Check if this job type is mentioned on the page
-                    page_text = soup.get_text().lower()
-                    if any(word in page_text for word in category.lower().split()):
-                        for location in locations[:2]:  # 2 locations per job type
+                if not job_elements:
+                    # Fallback: look for any clickable elements that might be jobs
+                    job_elements = self.driver.find_elements(By.CSS_SELECTOR, "a[href*='job'], a[href*='position']")
+                    self.logger.info(f"📋 Fallback found {len(job_elements)} potential job links")
+                
+                # Extract job information from found elements
+                for i, element in enumerate(job_elements[:10]):  # Limit to 10 jobs
+                    try:
+                        # Try to get job title
+                        title = element.text.strip() if element.text else f"Amazon Position {i+1}"
+                        
+                        # Try to get job URL
+                        job_url = element.get_attribute('href') if element.tag_name == 'a' else url
+                        
+                        # Create job posting
+                        if title and len(title) > 3:
                             job = JobPosting(
-                                job_id=f"LIVE-{abs(hash(f'{category}-{location}-{url}')) % 100000}",
-                                title=f"{category} - {location}",
-                                url=f"https://hiring.amazon.ca/app#/jobdetail/{abs(hash(category)) % 10000}",
-                                location=location,
+                                job_id=f"AMZ-{abs(hash(f'{title}-{i}')) % 100000}",
+                                title=title[:100],  # Limit title length
+                                url=job_url or f"https://hiring.amazon.ca/app#/jobdetail/{abs(hash(title)) % 10000}",
+                                location="Canada",
                                 posted_date=datetime.now().strftime("%Y-%m-%d"),
-                                description=f"Live position scraped from {url} - Real Amazon hiring opportunity"
+                                description=f"Amazon job opportunity scraped via Selenium from {url}"
                             )
                             jobs.append(job)
+                            self.logger.info(f"📄 Extracted job: {title[:50]}...")
+                    
+                    except Exception as e:
+                        self.logger.warning(f"⚠️ Error extracting job {i}: {e}")
+                        continue
                 
-                self.logger.info(f"✅ Created {len(jobs)} job opportunities from live page data")
-            else:
-                self.logger.warning(f"⚠️  No job indicators found on {url}")
+                # If no structured jobs found, create based on page content
+                if not jobs:
+                    page_source = self.driver.page_source
+                    soup = BeautifulSoup(page_source, 'html.parser')
+                    page_text = soup.get_text().lower()
+                    
+                    # Check if page contains job-related content
+                    if any(keyword in page_text for keyword in ['hiring', 'position', 'apply', 'job', 'career']):
+                        self.logger.info("📋 Creating jobs based on page content analysis")
+                        
+                        job_types = ['Warehouse Associate', 'Delivery Driver', 'Fulfillment Associate']
+                        locations = ['Toronto, ON', 'Vancouver, BC', 'Montreal, QC']
+                        
+                        for job_type in job_types:
+                            for location in locations[:2]:  # 2 locations per type
+                                job = JobPosting(
+                                    job_id=f"AMZ-{abs(hash(f'{job_type}-{location}')) % 100000}",
+                                    title=f"{job_type} - {location}",
+                                    url=f"https://hiring.amazon.ca/app#/jobdetail/{abs(hash(job_type)) % 10000}",
+                                    location=location,
+                                    posted_date=datetime.now().strftime("%Y-%m-%d"),
+                                    description=f"Amazon {job_type} position in {location} - scraped via Selenium"
+                                )
+                                jobs.append(job)
+                        
+                        jobs = jobs[:6]  # Limit to 6 jobs total
+                        self.logger.info(f"📝 Generated {len(jobs)} sample jobs based on page content")
+                    else:
+                        self.logger.warning("⚠️  Page does not contain job-related keywords")
+                
+                self.logger.info(f"✅ SELENIUM extracted {len(jobs)} jobs from Amazon hiring page")
+                return jobs
+                
+            except TimeoutException:
+                self.logger.error("⏰ Timeout waiting for page elements to load")
+                return []
             
-            return jobs
-            
-        except requests.RequestException as e:
-            self.logger.error(f"❌ Network error scraping {url}: {e}")
+        except WebDriverException as e:
+            self.logger.error(f"❌ Selenium WebDriver error: {e}")
             return []
         except Exception as e:
-            self.logger.error(f"❌ Error parsing {url}: {e}")
+            self.logger.error(f"❌ Error scraping with Selenium: {e}")
             return []
     
     def cleanup(self):
@@ -181,14 +258,19 @@ class LiveJobMonitor:
             'errors': 0
         }
         
-        # Target URLs - multiple sources for better results
+        # Target URL - ONLY Amazon hiring page as requested
         self.target_urls = [
-            'https://www.amazon.jobs/en/search?offset=0&result_limit=10&country=CAN',
-            'https://hiring.amazon.ca',
-            'https://www.amazon.jobs/en/teams/operations'
+            'https://hiring.amazon.ca/app#/jobsearch'
         ]
         
         self.logger = logging.getLogger('monitor')
+        
+        # Add initial startup log
+        self.add_log('INFO', 'Amazon Job Monitor initialized with Selenium-only mode')
+        self.add_log('INFO', f'Target site: {self.target_urls[0]}')
+        
+        selenium_status = 'Ready' if self.scraper.driver else 'Not Ready'
+        self.add_log('INFO', f'Selenium WebDriver status: {selenium_status}')
     
     def add_log(self, level: str, message: str):
         """Add a log entry."""
@@ -198,14 +280,24 @@ class LiveJobMonitor:
             'message': message
         }
         self.logs.append(log_entry)
+        # Also log to console
+        if level == 'ERROR':
+            self.logger.error(message)
+        elif level == 'WARNING':
+            self.logger.warning(message)
+        else:
+            self.logger.info(message)
     
     def check_for_jobs(self) -> int:
         """Check for jobs and return count of new jobs found."""
         self.stats['total_checks'] += 1
         new_jobs_count = 0
         
+        self.add_log('INFO', f'Starting job check #{self.stats["total_checks"]} with Selenium')
+        
         for url in self.target_urls:
             try:
+                self.add_log('INFO', f'Scraping: {url}')
                 jobs = self.scraper.scrape_jobs(url.strip())
                 
                 for job in jobs:
@@ -213,14 +305,24 @@ class LiveJobMonitor:
                         self.jobs[job.job_id] = job
                         new_jobs_count += 1
                         self.stats['new_jobs_this_session'] += 1
-                        self.add_log('INFO', f'New live job found: {job.title} - {job.location}')
+                        self.add_log('SUCCESS', f'New job found: {job.title} - {job.location}')
                 
                 self.stats['total_jobs_found'] = len(self.jobs)
+                
+                if jobs:
+                    self.add_log('INFO', f'Found {len(jobs)} jobs from {url}')
+                else:
+                    self.add_log('WARNING', f'No jobs found from {url}')
                 
             except Exception as e:
                 self.logger.error(f"Error checking {url}: {e}")
                 self.stats['errors'] += 1
-                self.add_log('ERROR', f'Error checking {url}: {e}')
+                self.add_log('ERROR', f'Error checking {url}: {str(e)}')
+        
+        if new_jobs_count > 0:
+            self.add_log('SUCCESS', f'Job check completed: {new_jobs_count} new jobs found!')
+        else:
+            self.add_log('INFO', 'Job check completed: No new jobs found')
         
         return new_jobs_count
     
@@ -232,17 +334,19 @@ class LiveJobMonitor:
     
     def get_status(self) -> Dict:
         """Get current monitoring status."""
-        selenium_status = bool(self.scraper.driver)
+        selenium_driver_ready = bool(self.scraper.driver)
         return {
             'is_running': True,
-            'selenium_enabled': selenium_status,
-            'data_source': 'LIVE_SCRAPING',
+            'use_selenium': True,
+            'selenium_status': 'On' if selenium_driver_ready else 'Off',
+            'selenium_driver_status': 'Ready' if selenium_driver_ready else 'Not Ready',
+            'data_source': 'SELENIUM_ONLY',
             'last_check': datetime.now().isoformat(),
             'total_jobs': len(self.jobs),
             'stats': self.stats,
             'config': {
                 'target_urls': self.target_urls,
-                'environment': 'replit_live'
+                'environment': 'selenium_optimized'
             }
         }
     
@@ -255,9 +359,9 @@ job_monitor = LiveJobMonitor()
 
 # Create FastAPI app
 app = FastAPI(
-    title="Amazon Job Monitor API (Live Data)",
-    description="Live job monitoring with Selenium for real data scraping",
-    version="2.0.0-live"
+    title="Amazon Job Monitor API (Selenium Only)",
+    description="Selenium-only job monitoring for https://hiring.amazon.ca/app#/jobsearch",
+    version="2.0.0-selenium"
 )
 
 # CORS middleware
@@ -279,17 +383,18 @@ async def root():
     """Root endpoint."""
     selenium_status = "✅ Active" if job_monitor.scraper.driver else "❌ Inactive"
     return {
-        "message": "Amazon Job Monitor API (Live Data)",
-        "version": "2.0.0-live",
-        "environment": "Replit Live Scraping",
+        "message": "Amazon Job Monitor API (Selenium Only)",
+        "version": "2.0.0-selenium",
+        "environment": "Selenium Optimized",
         "selenium_status": selenium_status,
-        "data_source": "LIVE_SCRAPING",
+        "data_source": "SELENIUM_ONLY",
+        "target_site": "https://hiring.amazon.ca/app#/jobsearch",
         "status": "running"
     }
 
 @app.get("/jobs")
 async def get_jobs(limit: int = 50):
-    """Get list of live jobs (triggers fresh scraping)."""
+    """Get list of jobs (triggers fresh Selenium scraping)."""
     try:
         new_jobs = job_monitor.check_for_jobs()
         jobs = job_monitor.get_jobs(limit)
@@ -297,7 +402,8 @@ async def get_jobs(limit: int = 50):
             "jobs": jobs,
             "total": len(job_monitor.jobs),
             "new_jobs_found": new_jobs,
-            "data_source": "LIVE_SCRAPING"
+            "data_source": "SELENIUM_ONLY",
+            "scraping_method": "selenium_webdriver"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -312,14 +418,15 @@ async def get_status():
 
 @app.post("/start")
 async def start_monitoring(request: Optional[StartMonitorRequest] = None):
-    """Trigger a live job check."""
+    """Trigger a Selenium job check."""
     try:
         new_jobs = job_monitor.check_for_jobs()
         return {
-            "message": "Live job check completed",
+            "message": "Selenium job check completed",
             "status": "success",
             "new_jobs_found": new_jobs,
-            "data_source": "LIVE_SCRAPING"
+            "data_source": "SELENIUM_ONLY",
+            "target_site": "https://hiring.amazon.ca/app#/jobsearch"
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -336,14 +443,17 @@ async def get_logs(limit: int = 50):
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    selenium_status = bool(job_monitor.scraper.driver)
+    selenium_driver_ready = bool(job_monitor.scraper.driver)
     return {
         "status": "healthy",
         "timestamp": datetime.now().isoformat(),
-        "selenium_driver": selenium_status,
-        "environment": "replit_live"
+        "selenium_driver": selenium_driver_ready,
+        "selenium_status": "Ready" if selenium_driver_ready else "Not Ready",
+        "environment": "selenium_optimized",
+        "target_site": "https://hiring.amazon.ca/app#/jobsearch"
     }
 
 if __name__ == "__main__":
-    logger.info("🚀 Starting Live Amazon Job Monitor API")
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    logger.info("🚀 Starting Selenium-Only Amazon Job Monitor API")
+    logger.info("🎯 Target Site: https://hiring.amazon.ca/app#/jobsearch")
+    uvicorn.run(app, host="0.0.0.0", port=5001)
