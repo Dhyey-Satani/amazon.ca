@@ -143,6 +143,28 @@ class JobScraper:
         if self.driver:
             return
         
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                self._attempt_selenium_setup()
+                if self.driver:
+                    self.logger.info(f"Selenium WebDriver initialized successfully on attempt {attempt + 1}")
+                    return
+            except Exception as e:
+                self.logger.warning(f"Selenium setup attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    self.logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    self.logger.error("All Selenium setup attempts failed")
+                    raise
+    
+    def _attempt_selenium_setup(self):
+        """Single attempt to setup Selenium WebDriver."""
+        
         try:
             import platform
             is_windows = platform.system() == 'Windows'
@@ -151,7 +173,7 @@ class JobScraper:
             chrome_options = Options()
             
             if is_docker:
-                # Docker/Cloud environment Chrome options
+                # Docker/Cloud environment Chrome options with enhanced stability
                 chrome_options.add_argument('--headless')
                 chrome_options.add_argument('--no-sandbox')
                 chrome_options.add_argument('--disable-dev-shm-usage')
@@ -167,15 +189,43 @@ class JobScraper:
                 chrome_options.add_argument('--allow-running-insecure-content')
                 chrome_options.add_argument('--disable-features=TranslateUI')
                 chrome_options.add_argument('--disable-ipc-flooding-protection')
+                
+                # Additional stability options for cloud deployment
+                chrome_options.add_argument('--single-process')  # Reduce resource usage
+                chrome_options.add_argument('--disable-background-timer-throttling')
+                chrome_options.add_argument('--disable-renderer-backgrounding')
+                chrome_options.add_argument('--disable-backgrounding-occluded-windows')
+                chrome_options.add_argument('--force-color-profile=srgb')
+                chrome_options.add_argument('--metrics-recording-only')
+                chrome_options.add_argument('--disable-crash-reporter')
+                chrome_options.add_argument('--disable-logging')
+                chrome_options.add_argument('--disable-login-animations')
+                chrome_options.add_argument('--disable-notifications')
+                
                 chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 chrome_options.add_experimental_option('useAutomationExtension', False)
                 
-                # Set user data directory to writable location
-                user_data_dir = os.path.join('/app', '.chrome_user_data')
+                # Set user data directory to writable location with unique identifier
+                import uuid
+                import os
+                import time
+                
+                # Create unique user data directory for each instance
+                process_id = os.getpid()
+                timestamp = int(time.time())
+                unique_suffix = f"{process_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+                user_data_dir = os.path.join('/app', f'.chrome_user_data_{unique_suffix}')
+                
+                # Ensure directory exists and is writable
                 os.makedirs(user_data_dir, exist_ok=True)
+                os.chmod(user_data_dir, 0o755)
+                
                 chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
                 
-                self.logger.info("Configuring Chrome for Docker/Cloud environment")
+                # Store for cleanup later
+                self._current_user_data_dir = user_data_dir
+                
+                self.logger.info(f"Configuring Chrome for Docker/Cloud environment with unique user data dir: {user_data_dir}")
             elif is_windows:
                 # Windows-specific Chrome options
                 chrome_options.add_argument('--disable-dev-shm-usage')
@@ -217,9 +267,20 @@ class JobScraper:
                 chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
                 chrome_options.add_experimental_option('useAutomationExtension', False)
                 
-                # Set user data directory to writable location
-                user_data_dir = os.path.join('/app', '.chrome_user_data')
+                # Set user data directory to writable location with unique identifier
+                import uuid
+                import time
+                
+                # Create unique user data directory for each instance
+                process_id = os.getpid()
+                timestamp = int(time.time())
+                unique_suffix = f"{process_id}_{timestamp}_{uuid.uuid4().hex[:8]}"
+                user_data_dir = os.path.join('/app', f'.chrome_user_data_{unique_suffix}')
+                
+                # Ensure directory exists and is writable
                 os.makedirs(user_data_dir, exist_ok=True)
+                os.chmod(user_data_dir, 0o755)
+                
                 chrome_options.add_argument(f'--user-data-dir={user_data_dir}')
             
             # Try different Chrome binary locations based on OS
@@ -686,13 +747,30 @@ class JobScraper:
             return None
     
     def cleanup(self):
-        """Clean up resources."""
+        """Clean up resources and remove temporary directories."""
         if self.driver:
             try:
+                # Get user data dir before closing driver
+                user_data_dir = None
+                if hasattr(self, '_current_user_data_dir'):
+                    user_data_dir = self._current_user_data_dir
+                
                 self.driver.quit()
-            except:
-                pass
-            self.driver = None
+                self.logger.info("Chrome driver closed successfully")
+                
+                # Clean up temporary user data directory
+                if user_data_dir and os.path.exists(user_data_dir):
+                    try:
+                        import shutil
+                        shutil.rmtree(user_data_dir, ignore_errors=True)
+                        self.logger.info(f"Cleaned up temporary user data directory: {user_data_dir}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to clean up user data directory: {e}")
+                        
+            except Exception as e:
+                self.logger.warning(f"Error during driver cleanup: {e}")
+            finally:
+                self.driver = None
     
     def _extract_real_amazon_jobs(self, soup: BeautifulSoup, base_url: str) -> List[JobPosting]:
         """Extract ONLY real job postings from Amazon hiring page - no fake data."""
