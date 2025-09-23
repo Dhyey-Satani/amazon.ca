@@ -1,74 +1,81 @@
-# Amazon Job Monitor API
+# Amazon Pay Rate Job Monitor
 
-🚀 **Live Production API for Amazon Job Monitoring**
+🎯 **Production-ready job monitoring system** that scrapes Amazon's hiring page specifically for positions with "Pay rate" information.
 
-A robust FastAPI-based job monitoring system that scrapes Amazon hiring pages and provides real-time job alerts.
+## 🚀 Quick Start
 
-## ✨ Features
+### Prerequisites
+- Docker & Docker Compose
+- 4GB+ RAM
+- Internet connection
 
-- **Real-time Job Monitoring**: Continuously monitors Amazon hiring pages
-- **REST API**: Full-featured API with job listing, status, and configuration endpoints
-- **Selenium Support**: JavaScript rendering for accurate job detection
-- **Fallback Mode**: Graceful degradation when Selenium fails
-- **Cloud Ready**: Optimized for Render.com deployment
+### One-Click Deployment
 
-## 🚀 Quick Deployment
-
-### Deploy to Render.com
-
-1. **Connect your repository** to Render
-2. **Set environment variables**:
-   ```
-   USE_SELENIUM=true
-   API_PORT=8000
-   AUTO_START_MONITORING=true
-   POLL_INTERVAL=30
-   ```
-3. **Deploy** using the included Dockerfile
-
-### Local Development
-
+#### Linux/macOS:
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the API server
-python api_bot.py
+./deploy.sh
 ```
 
-## 📡 API Endpoints
+#### Windows:
+```cmd
+deploy.bat
+```
 
-- `GET /` - API status
-- `GET /jobs` - List detected jobs
-- `GET /status` - Monitoring status
-- `GET /logs` - Recent logs
-- `POST /start` - Start monitoring
-- `POST /stop` - Stop monitoring
-- `DELETE /jobs` - Clear job history
+### Manual Deployment
 
-## 🛠️ Configuration
+```bash
+# Build and start
+docker-compose up -d
+
+# Check status
+curl http://localhost:8000/health
+```
+
+## 📋 Features
+
+- **🎯 Targeted Scraping**: Only Amazon Canada hiring page
+- **💰 Pay Rate Focus**: Filters jobs containing "Pay rate" information
+- **⚡ Fast & Reliable**: Playwright-powered browser automation
+- **🐳 Docker Ready**: Production-ready containerization
+- **📊 REST API**: Complete API with health checks
+- **📝 Clean Logging**: Structured logs for monitoring
+- **🔧 Production Ready**: Security, scaling, and monitoring built-in
+
+## 🌐 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-----------|
+| `/` | GET | API information |
+| `/health` | GET | Health check |
+| `/status` | GET | Monitor status |
+| `/jobs` | GET | Get Pay rate jobs |
+| `/start` | POST | Trigger job check |
+| `/logs` | GET | Get recent logs |
+| `/logs` | DELETE | Clear logs |
+| `/jobs` | DELETE | Clear job history |
+
+## 🔧 Configuration
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `USE_SELENIUM` | `true` | Enable JavaScript rendering |
-| `API_PORT` | `8000` | API server port |
-| `POLL_INTERVAL` | `30` | Check interval (seconds) |
-| `AUTO_START_MONITORING` | `true` | Auto-start on deployment |
-| `AMAZON_URLS` | Amazon CA hiring page | Target URLs to monitor |
+```bash
+# API Configuration
+API_HOST=0.0.0.0
+API_PORT=8000
+WORKERS=1
 
-## 📋 Files
+# Logging
+LOG_LEVEL=INFO
 
-- `api_bot.py` - Main FastAPI application
-- `Dockerfile` - Container configuration
-- `requirements.txt` - Python dependencies
-- `jobs.json` - Job storage (auto-generated)
+# Browser
+USE_PLAYWRIGHT=true
 
-## 🔧 Troubleshooting
-
-For deployment issues, check the logs via the `/logs` endpoint.
+# Target
+TARGET_URL=https://hiring.amazon.ca/app#/jobsearch
+```
 
 ---
 
-**Ready for production deployment!** 🎉
+**🎯 Target**: `https://hiring.amazon.ca/app#/jobsearch`  
+**🔍 Focus**: Jobs with "Pay rate" information only  
+**🚀 Status**: Production Ready

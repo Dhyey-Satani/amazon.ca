@@ -1,46 +1,20 @@
-# Core dependencies
+# Core web scraping and API dependencies
 requests>=2.31.0
 beautifulsoup4>=4.12.2
-selenium>=4.15.0
-webdriver-manager>=4.0.0
+playwright>=1.40.0
 python-dotenv>=1.0.0
 
-# FastAPI and API dependencies
+# FastAPI and API framework
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.5.0
-
-# Database
-# sqlite3 is included in Python standard library
-
-# Notifications
-win10toast>=0.9;sys_platform=="win32"
 
 # Web scraping utilities
 lxml>=4.9.3
 html5lib>=1.1
 
-# Logging and utilities
+# Logging
 colorlog>=6.7.0
 
-# Optional: For enhanced parsing
+# Date parsing for job dates
 dateparser>=1.1.8
-fuzzywuzzy>=0.18.0
-
-# Development and testing (optional)
-pytest>=7.4.0
-pytest-cov>=4.1.0
-black>=23.0.0
-flake8>=6.0.0
-beautifulsoup4
-colorlog
-dateparser
-fastapi
-html5lib
-lxml
-pydantic
-python-dotenv
-requests
-selenium
-uvicorn
-webdriver-manager
