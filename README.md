@@ -63,12 +63,11 @@ python api_bot.py
 - `api_bot.py` - Main FastAPI application
 - `Dockerfile` - Container configuration
 - `requirements.txt` - Python dependencies
-- `RENDER_DEPLOYMENT.md` - Detailed deployment guide
 - `jobs.json` - Job storage (auto-generated)
 
 ## 🔧 Troubleshooting
 
-See `RENDER_DEPLOYMENT.md` for detailed deployment instructions and troubleshooting tips.
+For deployment issues, check the logs via the `/logs` endpoint.
 
 ---
 

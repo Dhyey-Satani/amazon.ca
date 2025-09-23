@@ -67,10 +67,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY api_live.py .
-COPY health_check.py .
-COPY test_api_startup.py .
-COPY diagnose_502.py .
+COPY api_bot.py .
 COPY .env.example .
 
 # Create necessary directories and set permissions
@@ -105,4 +102,4 @@ ENV USE_SELENIUM=true \
 EXPOSE 8000
 
 # Start the API bot
-CMD ["python", "api_live.py"]
+CMD ["python", "api_bot.py"]
