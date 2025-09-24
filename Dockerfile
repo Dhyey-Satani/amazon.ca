@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
     libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
     libgtk-3-0 libgbm1 libasound2 \
     # Additional dependencies for headless operation
-    libxss1 libgconf-2-4 \
+    libxss1 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
